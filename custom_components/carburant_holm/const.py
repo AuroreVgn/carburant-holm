@@ -1,0 +1,53 @@
+"""Constantes de l'intégration Carburant HOLM."""
+from __future__ import annotations
+
+from typing import Final
+
+DOMAIN: Final = "carburant_holm"
+VERSION: Final = "1.2.0"
+
+API_URL: Final = (
+    "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/"
+    "prix-des-carburants-en-france-flux-instantane-v2/records"
+)
+GEO_API_URL: Final = "https://geo.api.gouv.fr/communes"
+BRAND_LOGO_URL: Final = (
+    "https://raw.githubusercontent.com/Aohzan/hass-prixcarburant/refs/heads/master/brand_logos/{}.svg"
+)
+STATIONS_NAME_FILE: Final = "stations_name.json"
+STATIONS_NAME_URL: Final = (
+    "https://raw.githubusercontent.com/Aohzan/hass-prixcarburant/refs/heads/master/"
+    "custom_components/prix_carburant/stations_name.json"
+)
+
+# clé API -> libellé
+FUELS: Final = {
+    "gazole": "Gazole",
+    "e10": "E10",
+    "sp98": "SP98",
+    "sp95": "SP95",
+    "e85": "E85",
+    "gplc": "GPLc",
+}
+DEFAULT_FUELS: Final = ["gazole", "e10", "sp98", "e85"]
+
+CONF_ZONE_NAME: Final = "zone_name"
+CONF_LOCATION: Final = "location"
+CONF_LATITUDE: Final = "latitude"
+CONF_LONGITUDE: Final = "longitude"
+CONF_RADIUS: Final = "radius_km"
+CONF_FUELS: Final = "fuels"
+CONF_FAVORITES: Final = "favorites"
+CONF_SCAN_INTERVAL: Final = "scan_interval"
+CONF_MAX_AGE: Final = "max_age_days"
+CONF_CITY: Final = "city"
+
+DEFAULT_RADIUS: Final = 10
+DEFAULT_SCAN_INTERVAL: Final = 30  # minutes
+DEFAULT_MAX_AGE: Final = 7  # jours : au-delà, un prix n'est plus pris en compte pour le « meilleur prix »
+MAX_ZONE_STATIONS: Final = 400
+HISTORY_DAYS: Final = 120
+TOP_COUNT: Final = 5
+
+CARD_FILENAME: Final = "holm-fuel-card.js"
+CARD_URL_PATH: Final = f"/{DOMAIN}/{CARD_FILENAME}"
