@@ -1,0 +1,77 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Carburant HOLM",
+        "description": "Crée une zone de surveillance des prix. Laisse la ville vide pour centrer la zone sur la maison, ou tape une ville / un code postal pour la centrer ailleurs (travail, résidence secondaire…).",
+        "data": {
+          "zone_name": "Nom de la zone (ex. Maison, Travail)",
+          "city": "Ville ou code postal (optionnel)"
+        }
+      },
+      "commune": {
+        "title": "Quelle commune ?",
+        "description": "Plusieurs communes correspondent, choisis la bonne.",
+        "data": { "commune": "Commune" }
+      },
+      "zone": {
+        "title": "Zone « {zone} »",
+        "description": "Déplace le point sur la carte et ajuste le cercle : toutes les stations dans ce rayon sont comparées. Choisis ensuite les carburants à suivre.",
+        "data": {
+          "location": "Centre et rayon de la zone",
+          "fuels": "Carburants suivis",
+          "max_age_days": "Ignorer les prix plus vieux que",
+          "scan_interval": "Actualisation toutes les"
+        }
+      },
+      "favorites": {
+        "title": "Stations favorites",
+        "description": "{count} stations trouvées dans un rayon de {radius} km. Épingle tes stations habituelles : elles auront leurs propres capteurs (prix, rang, écart au meilleur prix) et un historique.",
+        "data": { "favorites": "Stations favorites" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de joindre le service (réessaie dans un instant).",
+      "city_not_found": "Aucune commune trouvée.",
+      "radius_range": "Le rayon doit être compris entre 1 et 50 km.",
+      "no_fuel": "Choisis au moins un carburant."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modifier la zone",
+        "description": "Renomme la zone ou tape une ville pour la recentrer. Laisse vide pour garder le centre actuel.",
+        "data": {
+          "zone_name": "Nom de la zone",
+          "city": "Recentrer sur une ville (optionnel)"
+        }
+      },
+      "commune": {
+        "title": "Quelle commune ?",
+        "data": { "commune": "Commune" }
+      },
+      "zone": {
+        "title": "Zone « {zone} »",
+        "description": "Ajuste le point et le cercle sur la carte, puis les carburants suivis.",
+        "data": {
+          "location": "Centre et rayon de la zone",
+          "fuels": "Carburants suivis",
+          "max_age_days": "Ignorer les prix plus vieux que",
+          "scan_interval": "Actualisation toutes les"
+        }
+      },
+      "favorites": {
+        "title": "Stations favorites",
+        "description": "{count} stations dans un rayon de {radius} km.",
+        "data": { "favorites": "Stations favorites" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de joindre le service (réessaie dans un instant).",
+      "city_not_found": "Aucune commune trouvée.",
+      "radius_range": "Le rayon doit être compris entre 1 et 50 km.",
+      "no_fuel": "Choisis au moins un carburant."
+    }
+  }
+}
