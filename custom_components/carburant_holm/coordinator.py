@@ -1,0 +1,194 @@
+"""Coordinateur : récupère les stations de la zone, calcule meilleurs prix et historique."""
+from __future__ import annotations
+
+import logging
+from datetime import date, datetime, timedelta
+from statistics import mean
+from typing import Any
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
+
+from .api import FuelApi, FuelApiError, parse_station
+from .names import async_get_station_names
+from .const import (
+    CONF_FAVORITES,
+    CONF_FUELS,
+    CONF_LATITUDE,
+    CONF_LONGITUDE,
+    CONF_MAX_AGE,
+    CONF_RADIUS,
+    CONF_SCAN_INTERVAL,
+    CONF_ZONE_NAME,
+    DEFAULT_FUELS,
+    DEFAULT_MAX_AGE,
+    DEFAULT_RADIUS,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    FUELS,
+    HISTORY_DAYS,
+    TOP_COUNT,
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        d = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+    return d
+
+
+def compute_stats(stations: dict[str, dict], fuels: list[str], max_age_days: int, now: datetime) -> dict[str, dict]:
+    """Meilleur prix, moyenne et classement par carburant (fonction pure, testable)."""
+    stats: dict[str, dict] = {}
+    limit = now - timedelta(days=max_age_days)
+    for fuel in fuels:
+        rows = []
+        for st in stations.values():
+            f = st["fuels"].get(fuel)
+            if not f or f.get("price") is None:
+                continue
+            upd = _parse_dt(f.get("updated"))
+            if upd is not None and upd < limit:
+                continue
+            if not st.get("in_zone", True):
+                continue
+            rows.append((f["price"], st.get("distance") if st.get("distance") is not None else 999, st["id"]))
+        rows.sort()
+        if not rows:
+            stats[fuel] = {"count": 0, "best": None, "average": None, "max": None, "ranking": []}
+            continue
+        prices = [r[0] for r in rows]
+        stats[fuel] = {
+            "count": len(rows),
+            "best": rows[0][2],
+            "best_price": rows[0][0],
+            "average": round(mean(prices), 3),
+            "max": max(prices),
+            "ranking": [r[2] for r in rows],
+        }
+    return stats
+
+
+class FuelCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Gestion des données d'une zone."""
+
+    config_entry: ConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        opts = {**entry.data, **entry.options}
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN}_{entry.entry_id}",
+            update_interval=timedelta(minutes=int(opts.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))),
+        )
+        self.api = FuelApi(async_get_clientsession(hass))
+        self.zone_name: str = opts.get(CONF_ZONE_NAME) or entry.title
+        self.lat = float(opts.get(CONF_LATITUDE, hass.config.latitude))
+        self.lon = float(opts.get(CONF_LONGITUDE, hass.config.longitude))
+        self.radius = float(opts.get(CONF_RADIUS, DEFAULT_RADIUS))
+        self.fuels: list[str] = [f for f in opts.get(CONF_FUELS, DEFAULT_FUELS) if f in FUELS]
+        self.favorites: list[str] = [str(s) for s in opts.get(CONF_FAVORITES, [])]
+        self.max_age = int(opts.get(CONF_MAX_AGE, DEFAULT_MAX_AGE))
+        self.names: dict[str, dict] = {}
+        self.history: dict[str, Any] = {"zone": {}, "stations": {}}
+        self._store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.history")
+
+    async def _async_setup(self) -> None:
+        self.names = await async_get_station_names(self.hass)
+        stored = await self._store.async_load()
+        if isinstance(stored, dict):
+            self.history = {"zone": stored.get("zone", {}), "stations": stored.get("stations", {})}
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        center = (self.lat, self.lon)
+        try:
+            raw = await self.api.stations_in_zone(self.lat, self.lon, self.radius)
+            in_zone = {str(r.get("id")) for r in raw}
+            missing = [s for s in self.favorites if s not in in_zone]
+            extra = await self.api.stations_by_ids(missing) if missing else []
+        except FuelApiError as err:
+            raise UpdateFailed(f"API prix carburants indisponible : {err}") from err
+
+        stations: dict[str, dict] = {}
+        for rec in raw + extra:
+            st = parse_station(rec, self.names, center)
+            if not st:
+                continue
+            st["in_zone"] = st["id"] in in_zone
+            st["favorite"] = st["id"] in self.favorites
+            stations[st["id"]] = st
+
+        now = dt_util.now()
+        stats = compute_stats(stations, self.fuels, self.max_age, now)
+        self._record_history(stations, stats, now)
+        for fuel, s in stats.items():
+            s["trend_7d"] = self._trend(fuel, 7)
+            s["trend_1d"] = self._trend(fuel, 1)
+            for rank, sid in enumerate(s["ranking"], start=1):
+                stations[sid]["fuels"][fuel]["rank"] = rank
+        return {"stations": stations, "stats": stats, "updated": now.isoformat()}
+
+    # ---------- historique ----------
+    def _record_history(self, stations: dict, stats: dict, now: datetime) -> None:
+        day = now.date().isoformat()
+        zone = self.history.setdefault("zone", {})
+        for fuel, s in stats.items():
+            if not s.get("count"):
+                continue
+            zone.setdefault(fuel, {})[day] = {"min": s["best_price"], "avg": s["average"]}
+        st_hist = self.history.setdefault("stations", {})
+        for sid in self.favorites:
+            st = stations.get(sid)
+            if not st:
+                continue
+            for fuel in self.fuels:
+                f = st["fuels"].get(fuel)
+                if f and f.get("price") is not None:
+                    st_hist.setdefault(sid, {}).setdefault(fuel, {})[day] = f["price"]
+        cutoff = (now.date() - timedelta(days=HISTORY_DAYS)).isoformat()
+        for series in list(zone.values()) + [v for s in st_hist.values() for v in s.values()]:
+            for d in [d for d in series if d < cutoff]:
+                series.pop(d, None)
+        self._store.async_delay_save(lambda: self.history, 30)
+
+    def _trend(self, fuel: str, days: int) -> float | None:
+        series = self.history.get("zone", {}).get(fuel) or {}
+        if not series:
+            return None
+        today = max(series)
+        target = (date.fromisoformat(today) - timedelta(days=days)).isoformat()
+        past = [d for d in series if d <= target]
+        if not past:
+            return None
+        return round(series[today]["min"] - series[max(past)]["min"], 3)
+
+    def zone_history(self, fuel: str, days: int = 60) -> list[dict]:
+        series = self.history.get("zone", {}).get(fuel) or {}
+        return [{"date": d, **series[d]} for d in sorted(series)[-days:]]
+
+    def station_history(self, sid: str, fuel: str, days: int = 60) -> list[dict]:
+        series = self.history.get("stations", {}).get(sid, {}).get(fuel) or {}
+        return [{"date": d, "price": series[d]} for d in sorted(series)[-days:]]
+
+    def top(self, fuel: str, n: int = TOP_COUNT) -> list[dict]:
+        s = (self.data or {}).get("stats", {}).get(fuel) or {}
+        out = []
+        for sid in s.get("ranking", [])[:n]:
+            st = self.data["stations"][sid]
+            f = st["fuels"][fuel]
+            out.append({"id": sid, "name": st["name"], "brand": st["brand"], "city": st["city"], "price": f["price"], "distance": st["distance"], "updated": f.get("updated")})
+        return out
