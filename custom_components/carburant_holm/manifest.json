@@ -1,0 +1,12 @@
+{
+  "domain": "carburant_holm",
+  "name": "Carburant HOLM",
+  "codeowners": ["@kaaribou"],
+  "config_flow": true,
+  "dependencies": ["http", "frontend", "websocket_api"],
+  "documentation": "https://github.com/kaaribou/carburant-holm",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/kaaribou/carburant-holm/issues",
+  "requirements": [],
+  "version": "1.2.0"
+}
