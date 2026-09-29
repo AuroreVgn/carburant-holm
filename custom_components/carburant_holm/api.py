@@ -4,13 +4,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-import re
-import unicodedata
 from typing import Any
 
 from aiohttp import ClientError, ClientSession
 
-from .const import API_URL, BRAND_LOGO_URL, FUELS, GEO_API_URL, MAX_ZONE_STATIONS
+from .const import API_URL, FUELS, GEO_API_URL, MAX_ZONE_STATIONS
 
 _LOGGER = logging.getLogger(__name__)
 PAGE = 100
@@ -29,41 +27,6 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
-# enseigne (normalisée) -> fichier logo du dépôt Aohzan/hass-prixcarburant (brand_logos/)
-_LOGOS: list[tuple[str, str]] = [
-    ("totalenergies", "TotalEnergies.svg"), ("total", "TotalEnergies.svg"), ("elf", "ELF.svg"),
-    ("intermarche", "Intermarche.svg"), ("systemeu", "Hyper-U.svg"), ("superu", "Hyper-U.svg"),
-    ("hyperu", "Hyper-U.svg"), ("marcheu", "Hyper-U.svg"), ("uexpress", "Hyper-U.svg"),
-    ("leclerc", "Leclerc.svg"), ("carrefour", "Carrefour.svg"), ("avia", "AVIA.svg"),
-    ("esso", "Esso.svg"), ("bp", "BP.svg"), ("elan", "ELAN-FR.svg"), ("auchan", "Auchan.svg"),
-    ("simplymarket", "Auchan.svg"), ("atac", "Atac.svg"), ("agip", "Agip.svg"), ("eni", "Eni.svg"),
-    ("shell", "Shell.svg"), ("dyneff", "Dyneff.svg"), ("vito", "Vito.svg"), ("netto", "Netto-FR.svg"),
-    ("supermarchematch", "Match.svg"), ("match", "Match.svg"), ("maximarche", "Maximarche.png"),
-    ("spar", "Spar.svg"), ("supermarchesspar", "Spar.svg"), ("huita8", "8_A_Huit.svg"), ("8a8", "8_A_Huit.svg"), ("fulli", "Fulli.svg"),
-    ("rompetrol", "Rompetrol.svg"), ("monoprix", "Monoprix.svg"), ("g20", "G20.svg"),
-    ("bricomarche", "Bricomarche.svg"), ("geantcasino", "Geant_Casino.svg"), ("casino", "Casino.svg"),
-    ("cora", "Cora.svg"), ("lidl", "Lidl.svg"), ("aldi", "Aldi_Nord.svg"), ("leaderprice", "Leader_Price.svg"),
-    ("gulf", "Gulf.svg"), ("proxi", "Proxi.svg"), ("colruyt", "Colruyt.svg"), ("costco", "Costco.svg"),
-    ("weldom", "Weldom.svg"), ("renault", "Renault.svg"), ("migrol", "Migrol.svg"),
-]
-
-
-def _norm(text: str) -> str:
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"[^a-z0-9]", "", text)
-
-
-def logo_url(brand: str | None) -> str | None:
-    """URL du logo de l'enseigne (None si inconnue : la carte affiche les initiales)."""
-    if not brand:
-        return None
-    key = _norm(brand)
-    for prefix, file in _LOGOS:
-        if key.startswith(prefix):
-            return BRAND_LOGO_URL.format(file)
-    return None
-
-
 def _title(text: str | None) -> str:
     if not text:
         return ""
@@ -76,8 +39,11 @@ def _title(text: str | None) -> str:
     return " ".join(w if (i and w in small) else cap(w, i == 0) for i, w in enumerate(words))
 
 
-def parse_station(rec: dict[str, Any], names: dict[str, dict], center: tuple[float, float] | None) -> dict[str, Any] | None:
-    """Transforme un enregistrement brut de l'API en station exploitable."""
+def parse_station(rec: dict[str, Any], infos: dict[str, dict], center: tuple[float, float] | None) -> dict[str, Any] | None:
+    """Transforme un enregistrement brut de l'API en station exploitable.
+
+    `infos` : nom / enseigne / logo par identifiant de station (voir osm.py).
+    """
     try:
         sid = str(rec["id"])
     except KeyError:
@@ -102,13 +68,10 @@ def parse_station(rec: dict[str, Any], names: dict[str, dict], center: tuple[flo
                 continue
         elif rupture:
             fuels[key] = {"price": None, "shortage": rupture, "shortage_since": rec.get(f"{key}_rupture_debut")}
-    info = names.get(sid) or {}
+    info = infos.get(sid) or {}
     brand = (info.get("brand") or "").strip()
     city = _title(rec.get("ville"))
-    raw_name = (info.get("name") or "").strip()
-    if raw_name.isupper():
-        raw_name = _title(raw_name)
-    name = raw_name or (f"{brand} {city}".strip() if brand else f"Station {city}".strip())
+    name = (info.get("name") or "").strip() or f"{brand or 'Station'} {city}".strip()
     services = rec.get("services_service") or []
     if isinstance(services, str):
         services = [s.strip() for s in services.split("//") if s.strip()]
@@ -116,7 +79,7 @@ def parse_station(rec: dict[str, Any], names: dict[str, dict], center: tuple[flo
         "id": sid,
         "name": name,
         "brand": brand,
-        "logo": logo_url(brand),
+        "logo": info.get("logo"),
         "address": _title(rec.get("adresse")),
         "postal_code": rec.get("cp"),
         "city": city,
