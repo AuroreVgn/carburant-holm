@@ -4,21 +4,15 @@ from __future__ import annotations
 from typing import Final
 
 DOMAIN: Final = "carburant_holm"
-VERSION: Final = "1.2.1"
+VERSION: Final = "1.3.0"
 
 API_URL: Final = (
     "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/"
     "prix-des-carburants-en-france-flux-instantane-v2/records"
 )
 GEO_API_URL: Final = "https://geo.api.gouv.fr/communes"
-BRAND_LOGO_URL: Final = (
-    "https://raw.githubusercontent.com/Aohzan/hass-prixcarburant/refs/heads/master/brand_logos/{}"
-)
-STATIONS_NAME_FILE: Final = "stations_name.json"
-STATIONS_NAME_URL: Final = (
-    "https://raw.githubusercontent.com/Aohzan/hass-prixcarburant/refs/heads/master/"
-    "custom_components/prix_carburant/stations_name.json"
-)
+
+ATTRIBUTION: Final = "Prix : data.economie.gouv.fr · Stations : © contributeurs OpenStreetMap"
 
 # clé API -> libellé
 FUELS: Final = {
