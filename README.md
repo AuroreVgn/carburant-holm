@@ -183,6 +183,7 @@ Tableau façon « liste de stations » : logo · nom (ville, distance) · prix �
 |---|---|---|---|
 | Zone | `entry_id` | première zone | Zone à afficher (si vous en avez plusieurs). |
 | Présentation | `layout` | `full` | `full` (complète) ou `compact`. |
+| Apparence | `theme` | `auto` | `auto` (suit le mode clair / sombre de Home Assistant), `dark`, `light` ou `theme` (reprend les couleurs de votre thème). |
 | Titre | `title` | « Carburant *zone* » / « Stations *zone* » | Titre personnalisé. |
 | Carburant par défaut | `fuel` | premier suivi | `gazole`, `e10`, `sp98`, `sp95`, `e85`, `gplc`. |
 | Onglets | `fuels` | tous | Liste des carburants proposés dans la carte. |
@@ -321,6 +322,7 @@ Réponse : `version` et `zones[]` avec pour chaque zone `entry_id`, `title`, `zo
 | Un prix semble ancien | Voir l'attribut `updated` / la colonne *MàJ* ; baissez l'âge max dans les options pour l'exclure du classement. |
 | La carte de choix de la zone affiche « API KEY REQUIRED » | Problème de Home Assistant lui-même (le fournisseur de fonds de carte CARTO exige désormais une clé), corrigé dans les versions de Home Assistant publiées **après la 2026.8.3** : mettez Home Assistant à jour. |
 | L'assistant tourne longtemps puis « Erreur inconnue » | Corrigé en 1.3.3 : mettez l'intégration à jour depuis HACS. |
+| Texte illisible (noir sur fond sombre) avec un thème clair | Corrigé en 1.3.4 : la carte s'adapte au mode clair / sombre. Vous pouvez aussi forcer l'option **Apparence** (`theme`) sur Clair, Sombre ou « Couleurs de mon thème ». |
 | La carte ne se met pas à jour après une mise à jour | Rechargez la page sans cache (Ctrl + F5) ou videz le cache du frontend dans l'application mobile. |
 | Trop / pas assez de stations | Ajustez le rayon (options). Au-delà de 400 stations, seules les 400 premières sont chargées. |
 
@@ -351,3 +353,5 @@ Carburant HOLM vous fait économiser quelques centimes à la pompe ? Vous pouvez
 - Code : licence **MIT** — © kaaribou.
 
 Voir le [CHANGELOG](CHANGELOG.md).
+
+Fait partie de la collection **HOLM** : [HOLM Navbar Card](https://github.com/kaaribou/holm-navbar-card) · [HOLM Music Card](https://github.com/kaaribou/holm-music-card) · [HOLM Sentinel Card](https://github.com/kaaribou/holm-sentinel-card).

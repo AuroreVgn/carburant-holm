@@ -4,7 +4,7 @@
  * Données : websocket carburant_holm/data (aucune entité à configurer).
  */
 (() => {
-  const VERSION = "1.2.0";
+  const VERSION = "1.3.0";
   const FUEL_COLOR = { gazole: "245,158,11", e10: "34,197,94", sp98: "59,130,246", sp95: "6,182,212", e85: "132,204,22", gplc: "168,85,247" };
   const SERVICE_ICON = [
     [/lavage/i, "mdi:car-wash"], [/boutique|alimentaire/i, "mdi:basket"], [/gonflage/i, "mdi:tire"], [/toilette/i, "mdi:toilet"],
@@ -58,6 +58,7 @@
     set hass(hass) {
       const first = !this._hass;
       this._hass = hass;
+      this._tone();
       if (first) this._load();
       else if (this._btn && hass.states[this._btn] && this._btnTs !== hass.states[this._btn].last_changed) {
         this._btnTs = hass.states[this._btn].last_changed;
@@ -101,8 +102,30 @@
       setTimeout(() => this._load(), 6000);
     }
 
+    _tone() {
+      const t = (this._config && this._config.theme) || "auto";
+      // sombre ou clair ? on regarde la couleur de fond réellement appliquée par le thème
+      let dark = !!(this._hass && this._hass.themes && this._hass.themes.darkMode);
+      try {
+        const cs = getComputedStyle(this);
+        const bg = (cs.getPropertyValue("--primary-background-color") || cs.getPropertyValue("--card-background-color") || "").trim();
+        const m = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i) || bg.match(/rgba?\(([^)]+)\)/i);
+        if (m) {
+          let rgb;
+          if (bg.startsWith("#")) { const h = m[1].length === 3 ? m[1].replace(/./g, "$&$&") : m[1]; rgb = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
+          else rgb = m[1].split(",").slice(0, 3).map((x) => parseFloat(x));
+          if (rgb.every((x) => !isNaN(x))) dark = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 < 0.5;
+        }
+      } catch (e) { /* on garde darkMode */ }
+      const tone = t === "auto" ? (dark ? "dark" : "light") : t;
+      if (this.dataset.tone !== tone) this.dataset.tone = tone;
+      const d = dark ? "1" : "0";
+      if (this.dataset.dark !== d) this.dataset.dark = d;
+    }
+
     _render() {
       const root = this.shadowRoot;
+      this._tone();
       if (!root) return;
       if (!this._zone) {
         root.innerHTML = `<style>${HolmFuelCard.css()}</style><ha-card><div class="empty"><ha-icon icon="mdi:gas-station-off"></ha-icon>${esc(this._error || "Chargement des prix…")}</div></ha-card>`;
@@ -281,9 +304,9 @@
       return `
       :host { display: block; }
       ha-card { display: block; position: relative; overflow: hidden; container-type: inline-size; --c: 38,198,218;
-        --tx: var(--primary-text-color, #e6f2f5); --tx2: var(--secondary-text-color, rgba(220,235,240,.62));
+        --ink: 255,255,255; --tx: #e6f2f5; --tx2: rgba(220,235,240,.62); --hi: #fff;
         border-radius: var(--ha-card-border-radius, 20px); background: linear-gradient(160deg, rgba(20,28,38,.92), rgba(10,15,22,.96));
-        border: 1px solid rgba(var(--c), .2); box-shadow: 0 8px 26px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04); color: var(--tx); }
+        border: 1px solid rgba(var(--c), .2); box-shadow: 0 8px 26px rgba(0,0,0,.35), inset 0 1px 0 rgba(var(--ink),.04); color: var(--tx); }
       .amb { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(80% 50% at 100% 0%, rgba(var(--c), .18), transparent 70%); transition: background .6s; }
       button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; }
       a { color: inherit; text-decoration: none; }
@@ -294,14 +317,14 @@
       .ht { flex: 1; min-width: 0; }
       .title { font-size: 16px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .sub { font-size: 11.5px; color: var(--tx2); margin-top: 2px; }
-      .ref { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.06); color: var(--tx2); }
+      .ref { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(var(--ink),.06); color: var(--tx2); }
       .ref.spin ha-icon { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }
       .tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-      .tab { flex: 1 0 auto; min-width: 72px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 7px 10px; border-radius: 14px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); transition: background .25s, box-shadow .25s; }
+      .tab { flex: 1 0 auto; min-width: 72px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 7px 10px; border-radius: 14px; background: rgba(var(--ink),.05); box-shadow: inset 0 0 0 1px rgba(var(--ink),.06); transition: background .25s, box-shadow .25s; }
       .tab span { font-size: 11px; font-weight: 700; color: var(--tx2); text-transform: uppercase; letter-spacing: .05em; }
       .tab b { font-size: 14px; font-weight: 800; color: rgb(var(--c)); font-variant-numeric: tabular-nums; }
       .tab.on { background: linear-gradient(180deg, rgba(var(--c), .3), rgba(var(--c), .12)); box-shadow: inset 0 0 0 1.5px rgba(var(--c), .7), 0 4px 14px -6px rgb(var(--c)); }
-      .tab.on span { color: #fff; }
+      .tab.on span { color: var(--hi); }
 
       .hero { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px 12px; padding: 12px; border-radius: 18px; background: linear-gradient(135deg, rgba(var(--c), .2), rgba(var(--c), .04)); box-shadow: inset 0 0 0 1px rgba(var(--c), .3); }
       .hero.none { display: flex; justify-content: center; color: var(--tx2); font-size: 13px; }
@@ -317,10 +340,10 @@
       .hb { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
       .hb .go { margin-left: auto; }
       .hb .chip .dot { margin-right: 3px; }
-      .price { font-size: 30px; font-weight: 900; letter-spacing: -.02em; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; text-shadow: 0 0 20px rgba(var(--c), .45); }
+      .price { font-size: 30px; font-weight: 900; letter-spacing: -.02em; line-height: 1; color: var(--hi); font-variant-numeric: tabular-nums; text-shadow: 0 0 20px rgba(var(--c), .45); }
       .price small { font-size: .55em; vertical-align: top; margin-left: 1px; }
       .price u { text-decoration: none; font-size: .45em; font-weight: 700; margin-left: 3px; color: var(--tx2); }
-            .chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 7px; border-radius: 8px; font-size: 10.5px; font-weight: 800; background: rgba(255,255,255,.08); color: var(--tx2); }
+            .chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 7px; border-radius: 8px; font-size: 10.5px; font-weight: 800; background: rgba(var(--ink),.08); color: var(--tx2); }
       .chip ha-icon { --mdc-icon-size: 13px; }
       .chip.down { color: rgb(74,222,128); background: rgba(74,222,128,.12); } .chip.up { color: rgb(248,113,113); background: rgba(248,113,113,.12); }
       .go { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 10px; font-size: 11.5px; font-weight: 800; color: #fff; background: rgba(var(--c), .35); box-shadow: inset 0 0 0 1px rgba(var(--c), .6); }
@@ -329,19 +352,19 @@
       .chart { padding: 6px 4px 0; }
       .chart svg { width: 100%; height: 70px; display: block; }
       .chart .min { fill: none; stroke: rgb(var(--c)); stroke-width: 2; vector-effect: non-scaling-stroke; }
-      .chart .avg { fill: none; stroke: rgba(255,255,255,.45); stroke-width: 1.2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+      .chart .avg { fill: none; stroke: rgba(var(--ink),.45); stroke-width: 1.2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
       .chart .pt { fill: #fff; stroke: rgb(var(--c)); stroke-width: 2; vector-effect: non-scaling-stroke; }
-      .chart.nodata { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--tx2); padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,.04); }
+      .chart.nodata { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--tx2); padding: 8px 10px; border-radius: 12px; background: rgba(var(--ink),.04); }
       .leg { display: flex; justify-content: space-between; font-size: 10px; color: var(--tx2); }
       .leg i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin: 0 3px 0 8px; }
-      .lm { background: rgb(var(--c)); } .la { background: repeating-linear-gradient(90deg, rgba(255,255,255,.5) 0 3px, transparent 3px 5px); }
+      .lm { background: rgb(var(--c)); } .la { background: repeating-linear-gradient(90deg, rgba(var(--ink),.5) 0 3px, transparent 3px 5px); }
 
       .sec { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--tx2); text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }
       .sec ha-icon { --mdc-icon-size: 16px; color: rgb(var(--c)); }
       .sec span { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; }
       .list { display: flex; flex-direction: column; gap: 6px; }
-      .row { display: grid; grid-template-columns: 22px 34px 1fr auto; align-items: center; gap: 8px; padding: 8px 10px 8px 6px; border-radius: 14px; background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); cursor: pointer; transition: background .2s; }
-      .row:hover { background: rgba(255,255,255,.07); }
+      .row { display: grid; grid-template-columns: 22px 34px 1fr auto; align-items: center; gap: 8px; padding: 8px 10px 8px 6px; border-radius: 14px; background: rgba(var(--ink),.04); box-shadow: inset 0 0 0 1px rgba(var(--ink),.05); cursor: pointer; transition: background .2s; }
+      .row:hover { background: rgba(var(--ink),.07); }
       .row.first { box-shadow: inset 0 0 0 1px rgba(var(--c), .35); }
       .row.open { background: rgba(var(--c), .1); box-shadow: inset 0 0 0 1px rgba(var(--c), .5); }
       .rk { text-align: center; font-weight: 900; font-size: 13px; color: var(--tx2); }
@@ -352,7 +375,7 @@
       .rs { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--tx2); margin-top: 1px; white-space: nowrap; overflow: hidden; }
       .dot { display: inline-block; flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; }
       .dot.fresh { background: #4ade80; box-shadow: 0 0 5px #4ade80; } .dot.mid { background: #fbbf24; } .dot.old { background: #64748b; }
-      .bar { height: 3px; border-radius: 2px; background: rgba(255,255,255,.07); margin-top: 5px; overflow: hidden; }
+      .bar { height: 3px; border-radius: 2px; background: rgba(var(--ink),.07); margin-top: 5px; overflow: hidden; }
       .bar i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, rgba(var(--c), .4), rgb(var(--c))); }
       .rp { text-align: right; font-size: 17px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; }
       .rp small { font-size: .6em; vertical-align: top; } .rp u { text-decoration: none; font-size: .55em; color: var(--tx2); margin-left: 2px; }
@@ -365,10 +388,10 @@
       .fcs, .svs, .acts { display: flex; flex-wrap: wrap; gap: 5px; }
       .fc { display: inline-flex; gap: 5px; align-items: baseline; padding: 3px 8px; border-radius: 8px; font-size: 12px; background: rgba(var(--c), .14); box-shadow: inset 0 0 0 1px rgba(var(--c), .35); font-variant-numeric: tabular-nums; }
       .fc b { font-size: 10.5px; color: rgb(var(--c)); } .fc em { font-style: normal; color: #f87171; }
-      .sv, .sv24 { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 8px; font-size: 11px; color: var(--tx2); background: rgba(255,255,255,.05); }
+      .sv, .sv24 { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 8px; font-size: 11px; color: var(--tx2); background: rgba(var(--ink),.05); }
       .sv ha-icon, .sv24 ha-icon { --mdc-icon-size: 14px; }
       .sv24 { align-self: flex-start; color: #4ade80; background: rgba(74,222,128,.1); }
-      .acts a { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 10px; font-size: 12px; font-weight: 800; background: rgba(255,255,255,.08); }
+      .acts a { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border-radius: 10px; font-size: 12px; font-weight: 800; background: rgba(var(--ink),.08); }
       .acts ha-icon { --mdc-icon-size: 16px; }
       .none { padding: 10px; font-size: 12px; color: var(--tx2); text-align: center; }
       @container (max-width: 360px) { .price { font-size: 25px; } .logo.big { flex-basis: 44px; width: 44px; height: 44px; } .hero { gap: 9px; padding: 10px; } .rp { font-size: 15px; } }
@@ -384,11 +407,11 @@
       .chead .ct + .cref { margin-left: auto; }
       .cp { padding: 3px 8px; border-radius: 8px; font-size: 10.5px; font-weight: 800; color: rgb(var(--c)); background: rgba(var(--c), .1); }
       .cp.on { color: #fff; background: rgba(var(--c), .55); box-shadow: 0 2px 8px -3px rgb(var(--c)); }
-      .ctab { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,.07); }
+      .ctab { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(var(--ink),.07); }
       .cth, .cr { display: grid; grid-template-columns: 30px 1fr auto 40px; align-items: center; gap: 8px; padding: 6px 8px; }
-      .cth { font-size: 11px; font-weight: 800; color: var(--tx2); background: rgba(255,255,255,.05); }
+      .cth { font-size: 11px; font-weight: 800; color: var(--tx2); background: rgba(var(--ink),.05); }
       .cth span:nth-child(3), .cth span:nth-child(4) { text-align: right; }
-      .cr { border-top: 1px solid rgba(255,255,255,.06); transition: background .2s; }
+      .cr { border-top: 1px solid rgba(var(--ink),.06); transition: background .2s; }
       .cr:hover { background: rgba(var(--c), .08); }
       .clogo { width: 26px; height: 26px; border-radius: 8px; background: #fff; display: grid; place-items: center; overflow: hidden; }
       .clogo img { width: 84%; height: 84%; object-fit: contain; }
@@ -401,7 +424,18 @@
       .cdot.g { background: #4ade80; box-shadow: 0 0 6px #4ade80; } .cdot.r { background: #f87171; box-shadow: 0 0 6px #f87171; }
       .cj { text-align: right; font-size: 11px; font-weight: 800; color: var(--tx2); }
       .cj.ok { color: #4ade80; } .cj.mid { color: #fbbf24; } .cj.old { color: #94a3b8; }
-      @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }`;
+      @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+      /* ---------- thèmes : clair / couleurs du thème Home Assistant ---------- */
+      :host([data-tone="light"]) ha-card { --ink: 15,23,42; --tx: #0f172a; --tx2: rgba(15,23,42,.62); --hi: #0f172a;
+        background: linear-gradient(160deg, rgba(255,255,255,.96), rgba(241,245,249,.97)); box-shadow: 0 8px 26px rgba(15,23,42,.12), inset 0 1px 0 rgba(255,255,255,.8); }
+      :host([data-tone="theme"]) ha-card { --tx: var(--primary-text-color); --tx2: var(--secondary-text-color); --hi: var(--primary-text-color);
+        background: var(--ha-card-background, var(--card-background-color)); }
+      :host([data-tone="theme"][data-dark="0"]) ha-card { --ink: 15,23,42; }
+      :host([data-tone="light"]) .price, :host([data-tone="theme"][data-dark="0"]) .price { text-shadow: none; }
+      :host([data-tone="light"]) .go, :host([data-tone="light"]) .cp.on, :host([data-tone="theme"][data-dark="0"]) .go, :host([data-tone="theme"][data-dark="0"]) .cp.on { background: rgb(var(--c)); }
+      :host([data-tone="light"]) .logo, :host([data-tone="light"]) .clogo, :host([data-tone="theme"][data-dark="0"]) .logo, :host([data-tone="theme"][data-dark="0"]) .clogo { box-shadow: 0 0 0 1px rgba(15,23,42,.1); }
+      :host([data-tone="light"]) .amb { opacity: .6; }
+`;
     }
   }
 
@@ -426,6 +460,7 @@
         { name: "entry_id", selector: { select: { mode: "dropdown", options: zones.map((z) => ({ value: z.entry_id, label: z.title })) } } },
         { name: "layout", selector: { select: { mode: "list", options: [{ value: "full", label: "Complète (meilleur prix, tendance, classement)" }, { value: "compact", label: "Compacte (tableau des stations)" }] } } },
         { name: "title", selector: { text: {} } },
+        { name: "theme", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "Automatique (suit le mode clair / sombre)" }, { value: "dark", label: "Sombre" }, { value: "light", label: "Clair" }, { value: "theme", label: "Couleurs de mon thème Home Assistant" }] } } },
         { type: "grid", name: "", schema: [
           { name: "fuel", selector: { select: { mode: "dropdown", options: fuels } } },
           { name: "rows", selector: { number: { min: 3, max: 20, mode: "box" } } },
@@ -433,9 +468,9 @@
         { name: "fuels", selector: { select: { multiple: true, mode: "list", options: fuels } } },
         { type: "grid", name: "", schema: [{ name: "show_chart", selector: { boolean: {} } }, { name: "show_favorites", selector: { boolean: {} } }, { name: "favorites_only", selector: { boolean: {} } }] },
       ];
-      const L = { entry_id: "Zone", title: "Titre (optionnel)", fuel: "Carburant affiché par défaut", rows: "Stations dans le classement", fuels: "Onglets carburants (vide = tous)", show_chart: "Courbe de tendance", show_favorites: "Afficher mes favorites", layout: "Présentation", favorites_only: "Compacte : uniquement mes favorites" };
+      const L = { entry_id: "Zone", title: "Titre (optionnel)", fuel: "Carburant affiché par défaut", rows: "Stations dans le classement", fuels: "Onglets carburants (vide = tous)", show_chart: "Courbe de tendance", show_favorites: "Afficher mes favorites", layout: "Présentation", theme: "Apparence", favorites_only: "Compacte : uniquement mes favorites" };
       f.computeLabel = (s) => L[s.name] || s.name;
-      f.data = { layout: "full", rows: 6, show_chart: true, show_favorites: true, ...this._config };
+      f.data = { layout: "full", theme: "auto", rows: 6, show_chart: true, show_favorites: true, ...this._config };
       f.addEventListener("value-changed", (e) => {
         this._config = { ...e.detail.value };
         this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: JSON.parse(JSON.stringify(this._config)) }, bubbles: true, composed: true }));
