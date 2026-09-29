@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.1
+- Icône de l'intégration fournie avec l'intégration (dossier `brand`), affichée par Home Assistant 2026.3 et plus.
+
 ## 1.3.0
 - **Intégration autonome** : noms, enseignes et logos des stations issus d'OpenStreetMap et de Wikidata / Wikimedia Commons (mis en cache), plus aucune dépendance à une autre intégration.
 - Attribution des sources sur les capteurs.
