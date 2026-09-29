@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.1
+- Logos des enseignes : correspondance fiable entre les enseignes du flux (Total, Total Access, Intermarché, Système U, Carrefour Market…) et les logos (40+ marques). Les enseignes sans logo gardent leurs initiales.
+
 ## 1.2.0
 - Noms et enseignes des stations téléchargés depuis la liste communautaire et mis en cache chaque semaine (plus besoin du fichier local).
 - Publication sur GitHub, compatible HACS (mises à jour depuis Home Assistant).
