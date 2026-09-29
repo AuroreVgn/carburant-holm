@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, FUELS
+from .const import ATTRIBUTION, DOMAIN, FUELS
 from .coordinator import FuelCoordinator
 
 UNIT = "€/L"
@@ -57,6 +57,7 @@ def _days_since(value: str | None) -> int | None:
 
 class _Base(CoordinatorEntity[FuelCoordinator], SensorEntity):
     _attr_has_entity_name = True
+    _attr_attribution = ATTRIBUTION
     _attr_native_unit_of_measurement = UNIT
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 3
