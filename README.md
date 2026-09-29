@@ -4,10 +4,30 @@
 ![Version](https://img.shields.io/github/v/release/kaaribou/carburant-holm)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2025.1%2B-03a9f4)
 
-Intégration **Home Assistant** qui suit les **prix des carburants en France** autour de chez vous — ou autour de n'importe quelle ville —
-avec le **meilleur prix de la zone**, la **tendance**, vos **stations favorites** et une **carte Lovelace** moderne fournie avec l'intégration.
+**Où faire le plein au meilleur prix, près de chez vous, en un coup d'œil ?**
 
-Données officielles : flux instantané v2 du Ministère de l'Économie ([data.economie.gouv.fr](https://data.economie.gouv.fr/explore/dataset/prix-des-carburants-en-france-flux-instantane-v2/)).
+Carburant HOLM est une intégration **Home Assistant** qui suit en continu les **prix des carburants en France** autour de chez vous, ou autour de n'importe quelle ville. Elle trouve **la station la moins chère de votre zone**, suit la **tendance des prix**, garde un œil sur **vos stations favorites** et fournit **une carte Lovelace moderne**, prête à l'emploi.
+
+> ✨ **100 % automatique, 100 % visuel, zéro YAML.**
+> On l'installe, on choisit sa ville et son rayon **sur une carte**, on coche ses stations : c'est tout.
+> La carte s'ajoute depuis le sélecteur de cartes et **tous ses réglages se font dans l'éditeur visuel**.
+
+### En bref
+
+- 🗺️ **Votre zone, dessinée sur une carte** : une ville ou un code postal, puis le point et le rayon ajustés à la souris (1 à 50 km). Autant de zones que vous voulez : Maison, Travail, Vacances…
+- 🏆 **Le moins cher, tout de suite** : la meilleure station de la zone pour chaque carburant, son prix, sa distance, son écart à la moyenne et un bouton **Itinéraire**.
+- 📈 **La tendance** : historique sur 120 jours, évolution à 1 et 7 jours et courbe « meilleur prix / moyenne » dans la carte.
+- ⭐ **Vos stations** : prix, rang dans la zone, écart au meilleur prix et à la moyenne, et historique pour chacune de vos favorites, même hors zone.
+- 🧭 **Un clic, et on y va** :
+  - **vue compacte** : un toucher sur une station ouvre **Google Maps en mode itinéraire** ;
+  - **vue complète** : un toucher sur une station déplie **sa fiche détaillée** (adresse, prix de **tous** ses carburants, services, automate 24 h/24) avec les boutons **Google Maps** et **Waze**.
+- 🏷️ **Noms, enseignes et logos automatiques**, sans rien saisir (OpenStreetMap et Wikimedia).
+- 🚫 **Pas de prix périmés** : un prix trop ancien (seuil réglable) ne compte plus dans le classement, et chaque prix affiche sa fraîcheur.
+- ⛔ **Ruptures signalées** : une station en rupture est clairement indiquée.
+- 🔔 **Prêt pour vos automatisations** : des capteurs riches (station, distance, top 5, tendances…) pour être prévenu quand le gazole baisse ou quand la station la moins chère change.
+- 🔄 **Toujours à jour** : les prix sont actualisés automatiquement (de 10 min à 24 h), avec un bouton ↻ pour forcer, et les nouvelles versions arrivent par HACS.
+
+Données officielles : flux instantané v2 du Ministère de l'Économie ([data.economie.gouv.fr](https://data.economie.gouv.fr/explore/dataset/prix-des-carburants-en-france-flux-instantane-v2/)), mises à jour en continu par les stations.
 
 | Carte complète | Carte compacte | Compacte · favorites |
 |---|---|---|
@@ -36,12 +56,18 @@ Données officielles : flux instantané v2 du Ministère de l'Économie ([data.e
 
 | Besoin | Carburant HOLM |
 |---|---|
-| Choisir ses stations facilement | L'assistant **liste toutes les stations de la zone** (triées par distance, avec leurs prix actuels) : on coche ses favorites. |
-| Une zone autour d'une autre ville | Tapez une **ville ou un code postal**, puis ajustez **le point et le rayon sur une carte** (1 à 50 km). Plusieurs zones possibles (Maison, Travail, Vacances…). |
-| Savoir où c'est le moins cher | Un capteur **« Meilleur prix »** par carburant : station, distance, écart à la moyenne, top 5. |
-| Voir l'évolution | **Historique 120 jours** (meilleur prix & moyenne de la zone, prix des favorites) et **tendance 1 j / 7 j**. |
-| Ne pas se faire piéger par des prix périmés | Les prix plus vieux que *N* jours (réglable) sont **ignorés** dans le classement. |
-| Un bel affichage sans configuration | La carte **`holm-fuel-card`** est **servie et enregistrée automatiquement** par l'intégration (vue complète ou compacte). |
+| **Installer sans prise de tête** | HACS, un redémarrage, puis un **assistant pas à pas** dans *Paramètres → Appareils et services*. **Aucune ligne de YAML.** |
+| **Choisir sa zone simplement** | Tapez une **ville ou un code postal** et ajustez **le point et le rayon directement sur une carte**. Changez-les plus tard en deux clics dans *Configurer*. |
+| **Choisir ses stations sans chercher d'identifiant** | L'assistant **liste toutes les stations de la zone**, triées par distance, avec leur nom, leur ville et leurs prix du moment : on coche ses favorites. |
+| **Savoir où c'est le moins cher** | Un capteur **« Meilleur prix »** par carburant : station, enseigne, adresse, distance, date du prix, écart à la moyenne et **top 5**. |
+| **Suivre l'évolution** | **Historique 120 jours** (meilleur prix et moyenne de la zone, prix des favorites) et **tendance à 1 et 7 jours**, visibles dans la carte et utilisables dans vos automatisations. |
+| **Ne pas se faire piéger par un vieux prix** | Les prix plus anciens que *N* jours (réglable) sont **ignorés** ; chaque prix affiche sa fraîcheur (● vert, orange ou gris, ou *J+n*). |
+| **Un bel affichage, sans configuration** | La carte **`holm-fuel-card`** est **fournie, servie et déclarée automatiquement** : rien à ajouter dans les ressources Lovelace. Elle se trouve dans le sélecteur de cartes sous **« HOLM Carburant »**. |
+| **Tout régler à la souris** | **Éditeur visuel complet** : zone, présentation (complète ou compacte), carburant par défaut, onglets affichés, nombre de stations, courbe, favorites… |
+| **Deux présentations au choix** | **Complète** : onglets par carburant, station la moins chère mise en avant, courbe, classement et fiche détaillée au toucher. **Compacte** : un tableau net (logo, station, prix, *J+n*) dont chaque ligne ouvre **l'itinéraire Google Maps**. |
+| **Partir tout de suite** | **Itinéraire en un geste** : Google Maps depuis la vue compacte et la carte principale, **Google Maps ou Waze** depuis la fiche d'une station. |
+| **Des stations reconnaissables** | **Noms, enseignes et logos** récupérés automatiquement et mis en cache ; à défaut, des initiales propres. |
+| **Plusieurs lieux** | **Autant de zones que nécessaire**, chacune avec ses capteurs, ses favorites et sa carte. |
 
 Carburants gérés : **Gazole, E10 (SP95-E10), SP98, SP95, E85, GPLc**.
 
