@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api import FuelApi, FuelApiError, parse_station
-from .names import async_get_station_names
+from .osm import async_get_osm
 from .const import (
     CONF_FAVORITES,
     CONF_FUELS,
@@ -103,12 +103,11 @@ class FuelCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.fuels: list[str] = [f for f in opts.get(CONF_FUELS, DEFAULT_FUELS) if f in FUELS]
         self.favorites: list[str] = [str(s) for s in opts.get(CONF_FAVORITES, [])]
         self.max_age = int(opts.get(CONF_MAX_AGE, DEFAULT_MAX_AGE))
-        self.names: dict[str, dict] = {}
         self.history: dict[str, Any] = {"zone": {}, "stations": {}}
         self._store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.history")
 
     async def _async_setup(self) -> None:
-        self.names = await async_get_station_names(self.hass)
+        self.osm = await async_get_osm(self.hass)
         stored = await self._store.async_load()
         if isinstance(stored, dict):
             self.history = {"zone": stored.get("zone", {}), "stations": stored.get("stations", {})}
@@ -123,9 +122,10 @@ class FuelCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except FuelApiError as err:
             raise UpdateFailed(f"API prix carburants indisponible : {err}") from err
 
+        infos = await self.osm.async_infos(raw + extra, [(self.lat, self.lon, self.radius)])
         stations: dict[str, dict] = {}
         for rec in raw + extra:
-            st = parse_station(rec, self.names, center)
+            st = parse_station(rec, infos, center)
             if not st:
                 continue
             st["in_zone"] = st["id"] in in_zone
