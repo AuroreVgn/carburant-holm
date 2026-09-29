@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.3
+- **Assistant de configuration plus robuste** : la liste des stations ne dépend plus de la vitesse d'OpenStreetMap. Si OSM est lent ou indisponible, l'assistant continue aussitôt (noms récupérés en arrière-plan) au lieu de tourner puis d'échouer sur « Erreur inconnue » (notamment derrière un proxy qui coupe au bout de 60 s).
+- Délais réseau réduits dans l'assistant ; toute erreur inattendue affiche un message clair au lieu d'une erreur inconnue.
+- La mise à jour des prix n'attend plus OpenStreetMap plus de 20 s.
+
 ## 1.3.2
 - Validation HACS complète (plus aucune vérification désactivée), préparation à l'inscription dans la liste officielle HACS.
 

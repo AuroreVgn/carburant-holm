@@ -122,7 +122,7 @@ class FuelCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except FuelApiError as err:
             raise UpdateFailed(f"API prix carburants indisponible : {err}") from err
 
-        infos = await self.osm.async_infos(raw + extra, [(self.lat, self.lon, self.radius)])
+        infos = await self.osm.async_infos_quick(raw + extra, [(self.lat, self.lon, self.radius)], wait=20)
         stations: dict[str, dict] = {}
         for rec in raw + extra:
             st = parse_station(rec, infos, center)

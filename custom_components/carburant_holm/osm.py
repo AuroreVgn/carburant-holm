@@ -102,7 +102,7 @@ class OsmCache:
         last: Exception | None = None
         for url in OVERPASS_URLS:
             try:
-                async with asyncio.timeout(90):
+                async with asyncio.timeout(45):
                     async with session.post(url, data={"data": query}, headers={"User-Agent": USER_AGENT}) as resp:
                         if resp.status != 200:
                             raise ClientError(f"HTTP {resp.status}")
@@ -120,7 +120,7 @@ class OsmCache:
         if not todo:
             return
         parts = "".join(f'nwr["amenity"="fuel"](around:{r},{lat:.6f},{lon:.6f});' for lat, lon, r in todo.values())
-        query = f"[out:json][timeout:60];({parts});out center tags;"
+        query = f"[out:json][timeout:40];({parts});out center tags;"
         try:
             elements = await self._overpass(query)
         except ClientError as err:
@@ -221,6 +221,24 @@ class OsmCache:
             matches = {sid: self._match(sid, *c) for sid, c in coords.items()}
             await self._ensure_logos({m["qid"] for m in matches.values() if m and m.get("qid")})
             return {sid: self.info(sid, *c) for sid, c in coords.items()}
+
+
+    async def async_infos_quick(self, recs: list[dict], zones: list[tuple[float, float, float]], wait: float) -> dict[str, dict]:
+        """Comme async_infos, mais sans attendre plus de `wait` secondes.
+
+        Si OpenStreetMap est lent, on répond tout de suite avec le cache et la
+        récupération continue en arrière-plan (les noms arriveront à la
+        prochaine mise à jour).
+        """
+        task = self.hass.async_create_background_task(self.async_infos(recs, zones), f"{DOMAIN}_osm_fetch")
+        try:
+            async with asyncio.timeout(wait):
+                return await asyncio.shield(task)
+        except TimeoutError:
+            _LOGGER.debug("OpenStreetMap lent : noms en cache utilisés, récupération poursuivie en arrière-plan")
+        except Exception as err:  # noqa: BLE001 - les noms ne doivent jamais bloquer
+            _LOGGER.warning("Noms des stations indisponibles : %s", err)
+        return {str(r.get("id")): self.info(str(r.get("id")), *_coords(r)) for r in recs}
 
 
 def _coords(rec: dict) -> tuple[float | None, float | None]:

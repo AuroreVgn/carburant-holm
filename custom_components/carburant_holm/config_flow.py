@@ -54,13 +54,17 @@ class _Common:
     _communes: list[dict]
 
     def _api(self) -> FuelApi:
-        return FuelApi(async_get_clientsession(self.hass))
+        # dans l'assistant, on répond vite (un proxy coupe souvent au-delà de 60 s)
+        return FuelApi(async_get_clientsession(self.hass), retries=2, timeout=15)
 
     async def _search_city(self, city: str) -> str | None:
         """Retourne une clé d'erreur ou None ; remplit self._communes."""
         try:
             self._communes = await self._api().search_communes(city)
         except FuelApiError:
+            return "cannot_connect"
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Erreur inattendue en cherchant la commune")
             return "cannot_connect"
         if not self._communes:
             return "city_not_found"
@@ -131,10 +135,18 @@ class _Common:
             missing = [s for s in current if s not in ids]
             if missing:
                 raw += await api.stations_by_ids(missing)
-            osm = await async_get_osm(self.hass)
-            infos = await osm.async_infos(raw, [(center[0], center[1], float(d[CONF_RADIUS]))])
+            try:
+                osm = await async_get_osm(self.hass)
+                infos = await osm.async_infos_quick(raw, [(center[0], center[1], float(d[CONF_RADIUS]))], wait=10)
+            except Exception as err:  # noqa: BLE001 - les noms ne doivent jamais bloquer l'assistant
+                _LOGGER.warning("Noms des stations indisponibles : %s", err)
+                infos = {}
             stations = [s for s in (parse_station(r, infos, center) for r in raw) if s]
-        except FuelApiError:
+        except FuelApiError as err:
+            _LOGGER.warning("Stations de la zone indisponibles : %s", err)
+            errors["base"] = "cannot_connect"
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Erreur inattendue en listant les stations")
             errors["base"] = "cannot_connect"
         stations.sort(key=lambda s: (s["distance"] if s["distance"] is not None else 999))
         fuels = d.get(CONF_FUELS, DEFAULT_FUELS)

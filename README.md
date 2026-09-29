@@ -319,6 +319,8 @@ Réponse : `version` et `zones[]` avec pour chaque zone `entry_id`, `title`, `zo
 | La courbe dit « l'historique se construit » | Normal les premiers jours : 1 point par jour. La tendance 1 j apparaît le lendemain, celle à 7 j au bout d'une semaine. |
 | Une station n'a pas de nom / de logo | Elle n'est pas (ou mal) renseignée dans OpenStreetMap : ajoutez-y son nom, son enseigne (`brand`, `brand:wikidata`) et l'étiquette `ref:FR:prix-carburants` = identifiant de la station. La correction apparaît au rafraîchissement hebdomadaire. |
 | Un prix semble ancien | Voir l'attribut `updated` / la colonne *MàJ* ; baissez l'âge max dans les options pour l'exclure du classement. |
+| La carte de choix de la zone affiche « API KEY REQUIRED » | Problème de Home Assistant lui-même (le fournisseur de fonds de carte CARTO exige désormais une clé), corrigé dans les versions de Home Assistant publiées **après la 2026.8.3** : mettez Home Assistant à jour. |
+| L'assistant tourne longtemps puis « Erreur inconnue » | Corrigé en 1.3.3 : mettez l'intégration à jour depuis HACS. |
 | La carte ne se met pas à jour après une mise à jour | Rechargez la page sans cache (Ctrl + F5) ou videz le cache du frontend dans l'application mobile. |
 | Trop / pas assez de stations | Ajustez le rayon (options). Au-delà de 400 stations, seules les 400 premières sont chargées. |
 

@@ -98,20 +98,23 @@ def parse_station(rec: dict[str, Any], infos: dict[str, dict], center: tuple[flo
 class FuelApi:
     """Accès aux données gouvernementales."""
 
-    def __init__(self, session: ClientSession) -> None:
+    def __init__(self, session: ClientSession, retries: int = 3, timeout: float = 30) -> None:
         self._session = session
+        self._retries = retries
+        self._timeout = timeout
 
-    async def _get(self, url: str, params: dict[str, Any], retries: int = 3) -> Any:
+    async def _get(self, url: str, params: dict[str, Any]) -> Any:
         last: Exception | None = None
+        retries = self._retries
         for attempt in range(retries):
             try:
-                async with asyncio.timeout(30):
+                async with asyncio.timeout(self._timeout):
                     async with self._session.get(url, params=params) as resp:
                         if resp.status != 200:
                             body = await resp.text()
                             raise FuelApiError(f"HTTP {resp.status}: {body[:200]}")
                         return await resp.json(content_type=None)
-            except (ClientError, TimeoutError, FuelApiError) as err:
+            except (ClientError, TimeoutError, FuelApiError, ValueError) as err:
                 last = err
                 if attempt < retries - 1:
                     await asyncio.sleep(3 * (attempt + 1))
