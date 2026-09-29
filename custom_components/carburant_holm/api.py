@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
+import unicodedata
 from typing import Any
 
 from aiohttp import ClientError, ClientSession
@@ -27,10 +29,39 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
+# enseigne (normalisée) -> fichier logo du dépôt Aohzan/hass-prixcarburant (brand_logos/)
+_LOGOS: list[tuple[str, str]] = [
+    ("totalenergies", "TotalEnergies.svg"), ("total", "TotalEnergies.svg"), ("elf", "ELF.svg"),
+    ("intermarche", "Intermarche.svg"), ("systemeu", "Hyper-U.svg"), ("superu", "Hyper-U.svg"),
+    ("hyperu", "Hyper-U.svg"), ("marcheu", "Hyper-U.svg"), ("uexpress", "Hyper-U.svg"),
+    ("leclerc", "Leclerc.svg"), ("carrefour", "Carrefour.svg"), ("avia", "AVIA.svg"),
+    ("esso", "Esso.svg"), ("bp", "BP.svg"), ("elan", "ELAN-FR.svg"), ("auchan", "Auchan.svg"),
+    ("simplymarket", "Auchan.svg"), ("atac", "Atac.svg"), ("agip", "Agip.svg"), ("eni", "Eni.svg"),
+    ("shell", "Shell.svg"), ("dyneff", "Dyneff.svg"), ("vito", "Vito.svg"), ("netto", "Netto-FR.svg"),
+    ("supermarchematch", "Match.svg"), ("match", "Match.svg"), ("maximarche", "Maximarche.png"),
+    ("spar", "Spar.svg"), ("supermarchesspar", "Spar.svg"), ("huita8", "8_A_Huit.svg"), ("8a8", "8_A_Huit.svg"), ("fulli", "Fulli.svg"),
+    ("rompetrol", "Rompetrol.svg"), ("monoprix", "Monoprix.svg"), ("g20", "G20.svg"),
+    ("bricomarche", "Bricomarche.svg"), ("geantcasino", "Geant_Casino.svg"), ("casino", "Casino.svg"),
+    ("cora", "Cora.svg"), ("lidl", "Lidl.svg"), ("aldi", "Aldi_Nord.svg"), ("leaderprice", "Leader_Price.svg"),
+    ("gulf", "Gulf.svg"), ("proxi", "Proxi.svg"), ("colruyt", "Colruyt.svg"), ("costco", "Costco.svg"),
+    ("weldom", "Weldom.svg"), ("renault", "Renault.svg"), ("migrol", "Migrol.svg"),
+]
+
+
+def _norm(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]", "", text)
+
+
 def logo_url(brand: str | None) -> str | None:
+    """URL du logo de l'enseigne (None si inconnue : la carte affiche les initiales)."""
     if not brand:
         return None
-    return BRAND_LOGO_URL.format(brand.replace(" ", "%20"))
+    key = _norm(brand)
+    for prefix, file in _LOGOS:
+        if key.startswith(prefix):
+            return BRAND_LOGO_URL.format(file)
+    return None
 
 
 def _title(text: str | None) -> str:
