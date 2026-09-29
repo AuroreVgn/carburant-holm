@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Final
 
 DOMAIN: Final = "carburant_holm"
-VERSION: Final = "1.2.0"
+VERSION: Final = "1.2.1"
 
 API_URL: Final = (
     "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/"
@@ -12,7 +12,7 @@ API_URL: Final = (
 )
 GEO_API_URL: Final = "https://geo.api.gouv.fr/communes"
 BRAND_LOGO_URL: Final = (
-    "https://raw.githubusercontent.com/Aohzan/hass-prixcarburant/refs/heads/master/brand_logos/{}.svg"
+    "https://raw.githubusercontent.com/Aohzan/hass-prixcarburant/refs/heads/master/brand_logos/{}"
 )
 STATIONS_NAME_FILE: Final = "stations_name.json"
 STATIONS_NAME_URL: Final = (
