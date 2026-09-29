@@ -281,7 +281,7 @@ Réponse : `version` et `zones[]` avec pour chaque zone `entry_id`, `title`, `zo
 - **Moyenne / max** : sur les mêmes prix récents.
 - **Historique** : une valeur par jour (dernier relevé du jour) conservée **120 jours** dans le stockage de Home Assistant.
 - **Tendance** : différence du meilleur prix entre aujourd'hui et il y a 1 / 7 jours.
-- **Noms & logos** : le flux officiel ne donne ni le nom ni l'enseigne ; ils proviennent de la liste communautaire du projet [hass-prixcarburant](https://github.com/Aohzan/hass-prixcarburant) (téléchargée et mise en cache chaque semaine). Sinon : « Station *ville* ».
+- **Noms, enseignes & logos** : le flux officiel ne les fournit pas. L'intégration les lit dans **OpenStreetMap** (stations `amenity=fuel`, reliées au flux par l'étiquette `ref:FR:prix-carburants`, sinon par proximité à moins de 150 m) et récupère le logo de l'enseigne via **Wikidata / Wikimedia Commons**. Tout est mis en cache (stations relues chaque semaine, logos chaque mois). À défaut : « *Enseigne* *ville* » ou « Station *ville* », et les initiales à la place du logo.
 
 ---
 
@@ -291,7 +291,7 @@ Réponse : `version` et `zones[]` avec pour chaque zone `entry_id`, `title`, `zo
 |---|---|
 | *« Le flux de configuration n'a pas pu être chargé »* | Redémarrez Home Assistant après l'installation ; consultez les journaux (`custom_components.carburant_holm`). |
 | La courbe dit « l'historique se construit » | Normal les premiers jours : 1 point par jour. La tendance 1 j apparaît le lendemain, celle à 7 j au bout d'une semaine. |
-| Une station n'a pas de nom | Elle est absente de la liste communautaire : elle apparaît comme « Station *ville* ». |
+| Une station n'a pas de nom / de logo | Elle n'est pas (ou mal) renseignée dans OpenStreetMap : ajoutez-y son nom, son enseigne (`brand`, `brand:wikidata`) et l'étiquette `ref:FR:prix-carburants` = identifiant de la station. La correction apparaît au rafraîchissement hebdomadaire. |
 | Un prix semble ancien | Voir l'attribut `updated` / la colonne *MàJ* ; baissez l'âge max dans les options pour l'exclure du classement. |
 | La carte ne se met pas à jour après une mise à jour | Rechargez la page sans cache (Ctrl + F5) ou videz le cache du frontend dans l'application mobile. |
 | Trop / pas assez de stations | Ajustez le rayon (options). Au-delà de 400 stations, seules les 400 premières sont chargées. |
@@ -310,7 +310,8 @@ logger:
 
 - Données : **Ministère de l'Économie** — *Prix des carburants en France, flux instantané v2* — Licence Ouverte / Etalab 2.0.
 - Communes : **geo.api.gouv.fr**.
-- Noms & logos des stations : projet communautaire [Aohzan/hass-prixcarburant](https://github.com/Aohzan/hass-prixcarburant).
+- Noms et enseignes des stations : © contributeurs [OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL).
+- Logos : [Wikidata](https://www.wikidata.org) / [Wikimedia Commons](https://commons.wikimedia.org) (les logos restent la propriété de leurs marques).
 - Code : licence **MIT** — © kaaribou.
 
 Voir le [CHANGELOG](CHANGELOG.md).
