@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.2
+- Validation HACS complète (plus aucune vérification désactivée), préparation à l'inscription dans la liste officielle HACS.
+
 ## 1.3.1
 - Icône de l'intégration fournie avec l'intégration (dossier `brand`), affichée par Home Assistant 2026.3 et plus.
 
