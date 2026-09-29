@@ -1,7 +1,8 @@
 # Changelog
 
-## 1.2.1
-- Logos des enseignes : correspondance fiable entre les enseignes du flux (Total, Total Access, Intermarché, Système U, Carrefour Market…) et les logos (40+ marques). Les enseignes sans logo gardent leurs initiales.
+## 1.3.0
+- **Intégration autonome** : noms, enseignes et logos des stations issus d'OpenStreetMap et de Wikidata / Wikimedia Commons (mis en cache), plus aucune dépendance à une autre intégration.
+- Attribution des sources sur les capteurs.
 
 ## 1.2.0
 - Noms et enseignes des stations téléchargés depuis la liste communautaire et mis en cache chaque semaine (plus besoin du fichier local).
