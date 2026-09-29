@@ -332,6 +332,14 @@ logger:
 
 ---
 
+## Un petit merci ?
+
+Carburant HOLM vous fait économiser quelques centimes à la pompe ? Vous pouvez m'offrir une bière 🍺
+
+[![Offrez-moi une bière](https://img.shields.io/badge/Offrez--moi_une_bi%C3%A8re-PayPal-0070ba?logo=paypal&logoColor=white)](https://paypal.me/kaaribou)
+
+---
+
 ## Crédits & licence
 
 - Données : **Ministère de l'Économie** — *Prix des carburants en France, flux instantané v2* — Licence Ouverte / Etalab 2.0.
