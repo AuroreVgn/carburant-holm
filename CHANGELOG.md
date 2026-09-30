@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.5
+- **Mise à jour de la carte toujours prise en compte** : l'adresse de la ressource Lovelace dépendait d'un numéro de version qui pouvait rester en retard (1.3.3 alors que la 1.3.4 était installée), et un navigateur pouvait continuer d'afficher l'ancienne carte depuis son cache. Elle contient maintenant la version de l'intégration et une empreinte du fichier de la carte : toute nouvelle carte change l'adresse et force le rechargement.
+
 ## 1.3.4
 - **Carte : thèmes clairs pris en charge.** Le texte ne s'affiche plus en noir sur le fond sombre de la carte avec un thème clair (Google, thème par défaut…).
 - Nouvelle option **Apparence** (`theme`) : Automatique (suit le mode clair / sombre, par défaut), Sombre, Clair, ou Couleurs de mon thème Home Assistant.
