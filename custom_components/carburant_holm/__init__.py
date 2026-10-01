@@ -42,6 +42,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: FuelConfigEntry) -> bool
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _frontend)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    unsub = coordinator.async_start_tracking()
+    if unsub:
+        entry.async_on_unload(unsub)
     entry.async_on_unload(entry.add_update_listener(_update_listener))
     return True
 
@@ -125,6 +128,9 @@ def ws_data(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg
             "title": entry.title,
             "zone": coord.zone_name,
             "center": [coord.lat, coord.lon],
+            "mobile": coord.mobile,
+            "tracker": coord.tracker,
+            "tracker_name": (hass.states.get(coord.tracker).name if coord.tracker and hass.states.get(coord.tracker) else None),
             "radius": coord.radius,
             "fuels": [{"key": f, "label": FUELS[f]} for f in coord.fuels],
             "favorites": coord.favorites,
