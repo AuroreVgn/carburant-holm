@@ -144,6 +144,15 @@ class FuelApi:
             out.extend(data.get("results") or [])
         return out
 
+    async def stations_search(self, query: str, limit: int = 100) -> list[dict]:
+        """Stations d'une commune (nom) ou d'un code postal (complet ou début)."""
+        q = (query or "").strip().replace('"', "").replace("\\", "")
+        if not q:
+            return []
+        where = f'startswith(cp, "{q}")' if q.isdigit() else f'ville like "{q}*"'
+        data = await self._get(API_URL, {"where": where, "limit": min(limit, PAGE), "timezone": "Europe/Paris", "lang": "fr"})
+        return data.get("results") or []
+
     async def search_communes(self, name: str) -> list[dict]:
         params = {"nom": name, "fields": "nom,code,codesPostaux,centre,departement", "boost": "population", "limit": 8}
         if name.strip().isdigit() and len(name.strip()) == 5:

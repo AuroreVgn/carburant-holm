@@ -4,7 +4,7 @@
  * Données : websocket carburant_holm/data (aucune entité à configurer).
  */
 (() => {
-  const VERSION = "1.3.0";
+  const VERSION = "1.4.0";
   const FUEL_COLOR = { gazole: "245,158,11", e10: "34,197,94", sp98: "59,130,246", sp95: "6,182,212", e85: "132,204,22", gplc: "168,85,247" };
   const SERVICE_ICON = [
     [/lavage/i, "mdi:car-wash"], [/boutique|alimentaire/i, "mdi:basket"], [/gonflage/i, "mdi:tire"], [/toilette/i, "mdi:toilet"],
@@ -79,7 +79,11 @@
       try {
         const r = await this._hass.callWS({ type: "carburant_holm/data", history_days: 45 });
         const zones = r.zones || [];
-        this._zone = zones.find((z) => z.entry_id === this._config.entry_id) || zones.find((z) => this._config.zone && z.zone === this._config.zone) || zones[0] || null;
+        const ids = (this._config.entry_ids && this._config.entry_ids.length ? this._config.entry_ids : this._config.entry_id ? [this._config.entry_id] : []);
+        let picked = ids.map((id) => zones.find((z) => z.entry_id === id)).filter(Boolean);
+        if (!picked.length) picked = [zones.find((z) => this._config.zone && z.zone === this._config.zone) || zones[0]].filter(Boolean);
+        this._zones = picked;
+        this._zone = picked.length > 1 ? HolmFuelCard.merge(picked) : picked[0] || null;
         this._error = zones.length ? null : "Aucune zone configurée : ajoute l'intégration Carburant HOLM.";
         if (this._zone) {
           const allowed = this._config.fuels && this._config.fuels.length ? this._zone.fuels.filter((f) => this._config.fuels.includes(f.key)) : this._zone.fuels;
@@ -87,7 +91,12 @@
           if (!this._fuel || !this._fuels.some((f) => f.key === this._fuel)) this._fuel = (this._fuels[0] || {}).key;
           this._byId = Object.fromEntries(this._zone.stations.map((s) => [s.id, s]));
           const ents = this._hass.entities || {};
-          this._btn = Object.keys(ents).find((id) => id.startsWith("button.") && ents[id].platform === "carburant_holm" && (!ents[id].config_entry_id || ents[id].config_entry_id === this._zone.entry_id));
+          const zids = this._zones.map((z) => z.entry_id);
+          this._btns = Object.keys(ents).filter((id) => id.startsWith("button.") && ents[id].platform === "carburant_holm" && (!ents[id].config_entry_id || zids.includes(ents[id].config_entry_id)));
+          this._btn = this._btns[0];
+          const cnt = {};
+          this._zone.stations.forEach((s) => { const k = `${s.name}|${s.city}`; cnt[k] = (cnt[k] || 0) + 1; });
+          this._dup = cnt;
           if (this._btn && this._hass.states[this._btn]) this._btnTs = this._hass.states[this._btn].last_changed;
         }
       } catch (e) {
@@ -97,9 +106,55 @@
       this._render();
     }
     _refresh() {
-      if (this._btn) this._hass.callService("button", "press", { entity_id: this._btn });
+      if (this._btns && this._btns.length) this._hass.callService("button", "press", { entity_id: this._btns });
       this.shadowRoot.querySelector(".ref")?.classList.add("spin");
       setTimeout(() => this._load(), 6000);
+    }
+
+    // plusieurs zones dans une même carte : stations réunies, classement et tendance recalculés
+    static merge(zs) {
+      const byId = new Map();
+      zs.forEach((z) => z.stations.forEach((st) => {
+        const prev = byId.get(st.id);
+        if (!prev) byId.set(st.id, { ...st });
+        else if (st.in_zone !== false && prev.in_zone === false) byId.set(st.id, { ...st });
+      }));
+      const fuels = [];
+      zs.forEach((z) => z.fuels.forEach((f) => { if (!fuels.some((x) => x.key === f.key)) fuels.push(f); }));
+      const stats = {}, history = {};
+      fuels.forEach(({ key }) => {
+        const ids = [...new Set(zs.flatMap((z) => (z.stats[key] || {}).ranking || []))].filter((id) => byId.get(id)?.fuels[key]?.price != null);
+        ids.sort((a, b) => (byId.get(a).fuels[key].price - byId.get(b).fuels[key].price) || ((byId.get(a).distance ?? 999) - (byId.get(b).distance ?? 999)));
+        const prices = ids.map((id) => byId.get(id).fuels[key].price);
+        const tr = zs.map((z) => (z.stats[key] || {}).trend_7d).filter((v) => v != null);
+        stats[key] = ids.length ? { count: ids.length, best: ids[0], best_price: prices[0], average: prices.reduce((a, b) => a + b, 0) / prices.length, max: Math.max(...prices), ranking: ids,
+          trend_7d: tr.length ? tr.reduce((a, b) => a + b, 0) / tr.length : null } : { count: 0, ranking: [] };
+        const days = {};
+        zs.forEach((z) => (z.history[key] || []).forEach((d) => { (days[d.date] ||= []).push(d); }));
+        history[key] = Object.keys(days).sort().map((d) => ({ date: d, min: Math.min(...days[d].map((x) => x.min)), avg: days[d].reduce((a, x) => a + x.avg, 0) / days[d].length }));
+      });
+      return { ...zs[0], zone: zs.map((z) => z.zone).join(" + "), multi: zs.length, mobile: zs.some((z) => z.mobile),
+        fuels, stations: [...byId.values()], stats, history, favorites: [...new Set(zs.flatMap((z) => z.favorites))],
+        updated: zs.map((z) => z.updated).filter(Boolean).sort()[0] };
+    }
+    // ville, ou adresse + ville quand deux stations portent le même nom (ex. deux « Super U Poitiers »)
+    _where(s) {
+      const dup = this._dup && this._dup[`${s.name}|${s.city}`] > 1;
+      return dup && s.address ? `${s.address}, ${s.city}` : s.city;
+    }
+    // tri : default (classement puis favorites), price, distance, updated, name
+    _sortMode() { return this._sort || this._config.sort || "default"; }
+    _sorted(list, fuel, mode) {
+      const P = (x) => { const v = x.fuels[fuel]?.price; return v == null ? Infinity : v; };
+      const T = (x) => { const u = x.fuels[fuel]?.updated; return u ? -new Date(u).getTime() : Infinity; };
+      const D = (x) => (x.distance == null ? Infinity : x.distance);
+      const key = { price: (x) => [P(x), D(x)], distance: (x) => [D(x), P(x)], updated: (x) => [T(x), P(x)] }[mode];
+      if (mode === "name") return [...list].sort((a, b) => a.name.localeCompare(b.name, "fr") || P(a) - P(b));
+      if (!key) return list;
+      return [...list].sort((a, b) => { const ka = key(a), kb = key(b); return ka[0] - kb[0] || ka[1] - kb[1]; });
+    }
+    _click() {
+      return this._config.station_click || (this._config.layout === "compact" ? "maps" : "details");
     }
 
     _tone() {
@@ -155,23 +210,27 @@
         hero = `<div class="hero">
           <div class="logo big">${this._logo(best)}</div>
           <div class="hi">
-            <div class="crown"><ha-icon icon="mdi:trophy"></ha-icon>Moins cher de la zone</div>
+            <div class="crown"><ha-icon icon="mdi:trophy"></ha-icon>${z.mobile ? "Moins cher à proximité" : z.multi ? "Moins cher de vos zones" : "Moins cher de la zone"}</div>
             <div class="hn">${esc(best.name)}</div>
-            <div class="hs">${esc(best.city)}${best.distance != null ? ` · ${km(best.distance)}` : ""}</div>
+            <div class="hs">${esc(this._where(best))}${best.distance != null ? ` · ${km(best.distance)}` : ""}</div>
           </div>
           <div class="price">${priceHTML(f.price)}</div>
           <div class="hb">
             <span class="chip"><i class="dot ${a.cls}"></i>${esc(a.txt)}</span>
             ${t7 != null ? `<span class="chip ${t7 < 0 ? "down" : t7 > 0 ? "up" : ""}"><ha-icon icon="${t7 < 0 ? "mdi:trending-down" : t7 > 0 ? "mdi:trending-up" : "mdi:trending-neutral"}"></ha-icon>${cts(t7)} / 7 j</span>` : ""}
             ${dAvg != null && st.count > 1 ? `<span class="chip down">${cts(dAvg)} vs moy.</span>` : ""}
-            <a class="go" href="${this._maps(best)}" target="_blank" rel="noopener"><ha-icon icon="mdi:directions"></ha-icon>Itinéraire</a>
+            ${this._click() === "none" ? "" : `<a class="go" href="${this._maps(best)}" target="_blank" rel="noopener"><ha-icon icon="mdi:directions"></ha-icon>Itinéraire</a>`}
           </div>
         </div>`;
       }
 
-      const chart = cfg.show_chart ? this._chart(z.history[fuel] || [], col) : "";
-      const list = rows.map((s, i) => this._row(s, fuel, i + 1, lo, hi)).join("");
-      const favHTML = favs.length ? `<div class="sec"><ha-icon icon="mdi:star"></ha-icon>Tes stations</div>${favs.map((s) => this._row(s, fuel, (s.fuels[fuel] || {}).rank, lo, hi)).join("")}` : "";
+      const chart = cfg.show_chart && !z.mobile ? this._chart(z.history[fuel] || [], col) : "";
+      const sm = this._sortMode();
+      const merged = sm !== "default";
+      const list = merged
+        ? this._sorted(rows.concat(favs), fuel, sm).map((s) => this._row(s, fuel, (s.fuels[fuel] || {}).rank, lo, hi)).join("")
+        : rows.map((s, i) => this._row(s, fuel, i + 1, lo, hi)).join("");
+      const favHTML = !merged && favs.length ? `<div class="sec"><ha-icon icon="mdi:star"></ha-icon>Tes stations</div>${favs.map((s) => this._row(s, fuel, (s.fuels[fuel] || {}).rank, lo, hi)).join("")}` : "";
       const title = cfg.title || `Carburant ${z.zone}`;
 
       root.innerHTML = `<style>${HolmFuelCard.css()}</style>
@@ -181,13 +240,13 @@
           <div class="head">
             <div class="hic"><ha-icon icon="mdi:gas-station"></ha-icon></div>
             <div class="ht"><div class="title">${esc(title)}</div>
-              <div class="sub">${st.count || 0} stations · ${String(z.radius).replace(".", ",")} km · ${ago(z.updated)}</div></div>
+              <div class="sub">${z.mobile ? `<ha-icon class="mob" icon="mdi:crosshairs-gps"></ha-icon>${z.tracker_name && !String(z.zone).includes(z.tracker_name) ? `autour de ${esc(z.tracker_name)} · ` : ""}` : ""}${st.count || 0} stations · ${z.multi ? `${z.multi} zones` : `${String(z.radius).replace(".", ",")} km`} · ${ago(z.updated)}</div></div>
             <button class="ref" title="Actualiser"><ha-icon icon="mdi:refresh"></ha-icon></button>
           </div>
           <div class="tabs">${tabs}</div>
           ${hero}
           ${chart}
-          <div class="sec"><ha-icon icon="mdi:format-list-numbered"></ha-icon>Classement<span>${lo != null ? `${lo.toFixed(3).replace(".", ",")} → ${hi.toFixed(3).replace(".", ",")} €` : ""}</span></div>
+          <div class="sec"><ha-icon icon="mdi:format-list-numbered"></ha-icon>${merged ? `Stations · ${{ price: "prix", distance: "distance", updated: "mise à jour", name: "nom" }[sm]}` : "Classement"}<span>${lo != null ? `${lo.toFixed(3).replace(".", ",")} → ${hi.toFixed(3).replace(".", ",")} €` : ""}</span></div>
           <div class="list">${list || `<div class="none">Aucune station.</div>`}</div>
           ${favHTML}
         </div>
@@ -196,6 +255,9 @@
       root.querySelector(".ref").addEventListener("click", () => this._refresh());
       root.querySelectorAll(".row").forEach((r) => r.addEventListener("click", (e) => {
         if (e.target.closest("a")) return;
+        const mode = this._click();
+        if (mode === "none") return;
+        if (mode === "maps") { const s = this._byId[r.dataset.id]; if (s) window.open(this._maps(s), "_blank", "noopener"); return; }
         this._open = this._open === r.dataset.id ? null : r.dataset.id;
         this._render();
       }));
@@ -214,6 +276,8 @@
         const extra = cfg.show_favorites ? z.favorites.map((id) => this._byId[id]).filter((x) => x && x.fuels[fuel] && !shown.has(x.id)) : [];
         list = list.slice(0, cfg.rows).concat(extra);
       }
+      const sm = this._sortMode();
+      list = this._sorted(list, fuel, sm);
       const lo = st.best_price, hi = st.max;
       const pills = this._fuels.length > 1 ? `<div class="cpills">${this._fuels.map((f) => `<button class="cp${f.key === fuel ? " on" : ""}" data-f="${f.key}" style="--c:${FUEL_COLOR[f.key] || "38,198,218"}">${esc(f.label)}</button>`).join("")}</div>` : "";
       const days = (iso) => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso)) / 86400000)) : null);
@@ -222,22 +286,26 @@
         const d = days(f.updated);
         const cheap = f.price != null && f.price === lo, dear = f.price != null && f.price === hi && hi !== lo;
         const fav = z.favorites.includes(x.id);
-        return `<a class="cr" href="${this._maps(x)}" target="_blank" rel="noopener">
+        const mode = this._click(), open = mode === "details" && this._open === x.id;
+        const tag = mode === "maps" ? `a class="cr" href="${this._maps(x)}" target="_blank" rel="noopener"` : `div class="cr${mode === "details" ? " clk" : " ro"}${open ? " open" : ""}" data-id="${esc(x.id)}"`;
+        return `<${tag}>
           <span class="clogo">${this._logo(x)}</span>
-          <span class="cn"><b>${esc(x.name)}${fav ? `<ha-icon class="star" icon="mdi:star"></ha-icon>` : ""}</b><small>${esc(x.city)}${x.distance != null ? ` · ${km(x.distance)}` : ""}</small></span>
+          <span class="cn"><b>${esc(x.name)}${fav ? `<ha-icon class="star" icon="mdi:star"></ha-icon>` : ""}</b><small>${esc(this._where(x))}${x.distance != null ? ` · ${km(x.distance)}` : ""}${x.in_zone === false ? " · hors zone" : ""}</small></span>
           <span class="cpz">${f.price != null ? `<i class="cdot ${cheap ? "g" : dear ? "r" : ""}"></i>${f.price.toFixed(3).replace(".", ",")} €` : `<span class="rupt">Rupture</span>`}</span>
           <span class="cj ${d == null ? "" : d <= 1 ? "ok" : d <= 3 ? "mid" : "old"}">${d == null ? "–" : "J+" + d}</span>
-        </a>`;
+        </${mode === "maps" ? "a" : "div"}>${open ? `<div class="cdet">${this._detail(x)}</div>` : ""}`;
       }).join("");
       root.innerHTML = `<style>${HolmFuelCard.css()}</style>
       <ha-card class="compact" style="--c:${col}">
         <div class="wrap cw">
-          <div class="chead"><ha-icon icon="mdi:gas-station"></ha-icon><span class="ct">${esc(cfg.title || `Stations ${z.zone}`)}</span>${pills}<button class="ref cref" title="Actualiser"><ha-icon icon="mdi:refresh"></ha-icon></button></div>
-          <div class="ctab"><div class="cth"><span></span><span>Station</span><span>Prix</span><span>MàJ</span></div>${rows || `<div class="none">Aucune station.</div>`}</div>
+          <div class="chead"><ha-icon icon="${z.mobile ? "mdi:crosshairs-gps" : "mdi:gas-station"}"></ha-icon><span class="ct">${esc(cfg.title || `Stations ${z.zone}`)}</span>${pills}<button class="ref cref" title="Actualiser"><ha-icon icon="mdi:refresh"></ha-icon></button></div>
+          <div class="ctab"><div class="cth">${[["", ""], ["distance", "Station"], ["price", "Prix"], ["updated", "MàJ"]].map(([k, l]) => k ? `<button class="cs${sm === k ? " on" : ""}" data-s="${k}" title="Trier">${l}${sm === k ? " ▾" : ""}</button>` : "<span></span>").join("")}</div>${rows || `<div class="none">Aucune station.</div>`}</div>
         </div>
       </ha-card>`;
       root.querySelectorAll(".cp").forEach((b) => b.addEventListener("click", () => { this._fuel = b.dataset.f; this._render(); }));
       root.querySelector(".cref").addEventListener("click", () => this._refresh());
+      root.querySelectorAll(".cs").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.s; this._sort = this._sortMode() === k ? "default" : k; this._render(); }));
+      root.querySelectorAll(".cr.clk").forEach((r) => r.addEventListener("click", () => { this._open = this._open === r.dataset.id ? null : r.dataset.id; this._render(); }));
       root.querySelectorAll("img[data-fb]").forEach((img) => img.addEventListener("error", () => { img.replaceWith(Object.assign(document.createElement("span"), { className: "ini", textContent: img.dataset.fb })); }));
     }
     _logo(s) {
@@ -253,8 +321,11 @@
       const fav = this._zone.favorites.includes(s.id);
       const pct = f.price != null && hi > lo ? Math.max(4, 100 - ((f.price - lo) / (hi - lo)) * 96) : 100;
       const open = this._open === s.id;
-      let det = "";
-      if (open) {
+      const det = open ? `<div class="det">${this._detail(s)}</div>` : "";
+      return this._rowHTML(s, fuel, rank, lo, hi, f, a, fav, pct, open, det);
+    }
+    _detail(s) {
+      {
         const others = this._zone.fuels.map((x) => {
           const g = s.fuels[x.key];
           if (!g) return "";
@@ -264,19 +335,21 @@
           const ic = (SERVICE_ICON.find(([re]) => re.test(x)) || [0, "mdi:check-circle-outline"])[1];
           return `<span class="sv"><ha-icon icon="${ic}"></ha-icon>${esc(x)}</span>`;
         }).join("");
-        det = `<div class="det">
+        const links = this._click() === "none" ? "" : `<div class="acts"><a href="${this._maps(s)}" target="_blank" rel="noopener"><ha-icon icon="mdi:google-maps"></ha-icon>Google Maps</a>${s.latitude != null ? `<a href="https://waze.com/ul?ll=${s.latitude},${s.longitude}&navigate=yes" target="_blank" rel="noopener"><ha-icon icon="mdi:waze"></ha-icon>Waze</a>` : ""}</div>`;
+        return `
           <div class="addr"><ha-icon icon="mdi:map-marker-outline"></ha-icon>${esc(s.address)}, ${esc(s.postal_code || "")} ${esc(s.city)}</div>
           <div class="fcs">${others}</div>
           ${s.automate_24_24 ? `<div class="sv24"><ha-icon icon="mdi:hours-24"></ha-icon>Automate 24 h/24</div>` : ""}
           ${serv ? `<div class="svs">${serv}</div>` : ""}
-          <div class="acts"><a href="${this._maps(s)}" target="_blank" rel="noopener"><ha-icon icon="mdi:google-maps"></ha-icon>Google Maps</a>${s.latitude != null ? `<a href="https://waze.com/ul?ll=${s.latitude},${s.longitude}&navigate=yes" target="_blank" rel="noopener"><ha-icon icon="mdi:waze"></ha-icon>Waze</a>` : ""}</div>
-        </div>`;
+          ${links}`;
       }
-      return `<div class="row${open ? " open" : ""}${rank === 1 ? " first" : ""}" data-id="${esc(s.id)}">
+    }
+    _rowHTML(s, fuel, rank, lo, hi, f, a, fav, pct, open, det) {
+      return `<div class="row${open ? " open" : ""}${rank === 1 ? " first" : ""}${this._click() === "none" ? " ro" : ""}" data-id="${esc(s.id)}">
         <div class="rk">${rank || "–"}</div>
         <div class="logo">${this._logo(s)}</div>
         <div class="ri"><div class="rn">${esc(s.name)}${fav ? `<ha-icon class="star" icon="mdi:star"></ha-icon>` : ""}</div>
-          <div class="rs">${esc(s.city)}${s.distance != null ? ` · ${km(s.distance)}` : ""} · <i class="dot ${a.cls}"></i>${esc(a.txt)}</div>
+          <div class="rs">${esc(this._where(s))}${s.distance != null ? ` · ${km(s.distance)}` : ""}${s.in_zone === false ? " · hors zone" : ""} · <i class="dot ${a.cls}"></i>${esc(a.txt)}</div>
           <div class="bar"><i style="width:${pct}%"></i></div></div>
         <div class="rp">${f.price != null ? priceHTML(f.price) : `<span class="rupt">Rupture</span>`}${f.price != null && lo != null && rank !== 1 ? `<em>${cts(f.price - lo)}</em>` : ""}</div>
         ${det}
@@ -410,9 +483,14 @@
       .ctab { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(var(--ink),.07); }
       .cth, .cr { display: grid; grid-template-columns: 30px 1fr auto 40px; align-items: center; gap: 8px; padding: 6px 8px; }
       .cth { font-size: 11px; font-weight: 800; color: var(--tx2); background: rgba(var(--ink),.05); }
-      .cth span:nth-child(3), .cth span:nth-child(4) { text-align: right; }
+      .cth span:nth-child(3), .cth span:nth-child(4), .cth .cs:nth-child(3), .cth .cs:nth-child(4) { text-align: right; }
+      .cs { all: unset; cursor: pointer; font: inherit; color: inherit; } .cs:hover, .cs.on { color: rgb(var(--c)); }
       .cr { border-top: 1px solid rgba(var(--ink),.06); transition: background .2s; }
       .cr:hover { background: rgba(var(--c), .08); }
+      .cr.clk { cursor: pointer; } .cr.ro, .row.ro { cursor: default; } .cr.ro:hover { background: none; } .row.ro:hover { background: rgba(var(--ink),.04); }
+      .cr.open { background: rgba(var(--c), .10); }
+      .cdet { display: flex; flex-direction: column; gap: 8px; padding: 4px 10px 10px 46px; animation: din .3s ease; }
+      .mob { --mdc-icon-size: 13px; vertical-align: -2px; margin-right: 3px; color: rgb(var(--c)); }
       .clogo { width: 26px; height: 26px; border-radius: 8px; background: #fff; display: grid; place-items: center; overflow: hidden; }
       .clogo img { width: 84%; height: 84%; object-fit: contain; }
       .clogo .ini { font-size: 10px; }
@@ -457,7 +535,7 @@
       const f = document.createElement("ha-form");
       f.hass = this._hass;
       f.schema = [
-        { name: "entry_id", selector: { select: { mode: "dropdown", options: zones.map((z) => ({ value: z.entry_id, label: z.title })) } } },
+        { name: "entry_ids", selector: { select: { multiple: true, mode: "list", options: zones.map((z) => ({ value: z.entry_id, label: z.title + (z.mobile ? " (mobile)" : "") })) } } },
         { name: "layout", selector: { select: { mode: "list", options: [{ value: "full", label: "Complète (meilleur prix, tendance, classement)" }, { value: "compact", label: "Compacte (tableau des stations)" }] } } },
         { name: "title", selector: { text: {} } },
         { name: "theme", selector: { select: { mode: "dropdown", options: [{ value: "auto", label: "Automatique (suit le mode clair / sombre)" }, { value: "dark", label: "Sombre" }, { value: "light", label: "Clair" }, { value: "theme", label: "Couleurs de mon thème Home Assistant" }] } } },
@@ -466,13 +544,19 @@
           { name: "rows", selector: { number: { min: 3, max: 20, mode: "box" } } },
         ] },
         { name: "fuels", selector: { select: { multiple: true, mode: "list", options: fuels } } },
+        { name: "sort", selector: { select: { mode: "dropdown", options: [{ value: "default", label: "Classement, puis mes favorites (par défaut)" }, { value: "price", label: "Prix le plus bas d'abord (tout mélangé)" }, { value: "distance", label: "Plus proche d'abord" }, { value: "updated", label: "Mise à jour la plus récente d'abord" }, { value: "name", label: "Nom (A → Z)" }] } } },
+        { name: "station_click", selector: { select: { mode: "dropdown", options: [{ value: "details", label: "Afficher le détail de la station" }, { value: "maps", label: "Ouvrir l'itinéraire (Google Maps)" }, { value: "none", label: "Rien (lecture seule, aucun lien)" }] } } },
         { type: "grid", name: "", schema: [{ name: "show_chart", selector: { boolean: {} } }, { name: "show_favorites", selector: { boolean: {} } }, { name: "favorites_only", selector: { boolean: {} } }] },
       ];
-      const L = { entry_id: "Zone", title: "Titre (optionnel)", fuel: "Carburant affiché par défaut", rows: "Stations dans le classement", fuels: "Onglets carburants (vide = tous)", show_chart: "Courbe de tendance", show_favorites: "Afficher mes favorites", layout: "Présentation", theme: "Apparence", favorites_only: "Compacte : uniquement mes favorites" };
+      const L = { sort: "Tri des stations", entry_ids: "Zones (une ou plusieurs, réunies dans la carte)", station_click: "Clic sur une station", entry_id: "Zone", title: "Titre (optionnel)", fuel: "Carburant affiché par défaut", rows: "Stations dans le classement", fuels: "Onglets carburants (vide = tous)", show_chart: "Courbe de tendance", show_favorites: "Afficher mes favorites", layout: "Présentation", theme: "Apparence", favorites_only: "Compacte : uniquement mes favorites" };
       f.computeLabel = (s) => L[s.name] || s.name;
-      f.data = { layout: "full", theme: "auto", rows: 6, show_chart: true, show_favorites: true, ...this._config };
+      const cfg0 = { ...this._config };
+      if (!cfg0.entry_ids && cfg0.entry_id) cfg0.entry_ids = [cfg0.entry_id];
+      f.data = { layout: "full", theme: "auto", rows: 6, show_chart: true, show_favorites: true, station_click: cfg0.layout === "compact" ? "maps" : "details", ...cfg0 };
       f.addEventListener("value-changed", (e) => {
         this._config = { ...e.detail.value };
+        delete this._config.entry_id;
+        if (!this._config.entry_ids || !this._config.entry_ids.length) delete this._config.entry_ids;
         this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: JSON.parse(JSON.stringify(this._config)) }, bubbles: true, composed: true }));
       });
       this._form = f;

@@ -15,12 +15,16 @@ Carburant HOLM est une intégration **Home Assistant** qui suit en continu les *
 ### En bref
 
 - 🗺️ **Votre zone, dessinée sur une carte** : une ville ou un code postal, puis le point et le rayon ajustés à la souris (1 à 50 km). Autant de zones que vous voulez : Maison, Travail, Vacances…
+- 📍 **Zone mobile** : la zone peut suivre une personne ou un téléphone (application compagnon) ; les stations proches sont rechargées quand elle se déplace.
+- 🧩 **Plusieurs zones dans une même carte** : stations réunies, classement et meilleur prix calculés sur l'ensemble.
 - 🏆 **Le moins cher, tout de suite** : la meilleure station de la zone pour chaque carburant, son prix, sa distance, son écart à la moyenne et un bouton **Itinéraire**.
 - 📈 **La tendance** : historique sur 120 jours, évolution à 1 et 7 jours et courbe « meilleur prix / moyenne » dans la carte.
-- ⭐ **Vos stations** : prix, rang dans la zone, écart au meilleur prix et à la moyenne, et historique pour chacune de vos favorites, même hors zone.
+- ⭐ **Vos stations** : prix, rang dans la zone, écart au meilleur prix et à la moyenne, et historique pour chacune de vos favorites, **même hors zone** : une recherche par commune ou code postal permet d'ajouter n'importe quelle station de France.
 - 🧭 **Un clic, et on y va** :
   - **vue compacte** : un toucher sur une station ouvre **Google Maps en mode itinéraire** ;
-  - **vue complète** : un toucher sur une station déplie **sa fiche détaillée** (adresse, prix de **tous** ses carburants, services, automate 24 h/24) avec les boutons **Google Maps** et **Waze**.
+  - **vue complète** : un toucher sur une station déplie **sa fiche détaillée** (adresse, prix de **tous** ses carburants, services, automate 24 h/24) avec les boutons **Google Maps** et **Waze** ;
+  - réglable : itinéraire, fiche détaillée, ou **lecture seule** (aucun lien).
+- 🔤 **Stations homonymes distinguées** : deux « Super U Poitiers » affichent leur adresse.
 - 🏷️ **Noms, enseignes et logos automatiques**, sans rien saisir (OpenStreetMap et Wikimedia).
 - 🚫 **Pas de prix périmés** : un prix trop ancien (seuil réglable) ne compte plus dans le classement, et chaque prix affiche sa fraîcheur.
 - ⛔ **Ruptures signalées** : une station en rupture est clairement indiquée.
@@ -98,10 +102,14 @@ Copiez le dossier `custom_components/carburant_holm` dans `/config/custom_compon
 
 | Étape | Ce que vous faites |
 |---|---|
-| 1. Zone | Donnez un **nom** (ex. *Maison*, *Travail*). Laissez **Ville** vide pour centrer sur votre domicile, ou tapez une **ville / un code postal**. |
+| 1. Zone | Donnez un **nom** (ex. *Maison*, *Travail*). Laissez **Ville** vide pour centrer sur votre domicile, tapez une **ville / un code postal**, ou choisissez une **personne / un téléphone** pour une **zone mobile**. |
 | 2. Commune | Si plusieurs communes correspondent, choisissez la bonne (recherche via geo.api.gouv.fr). |
-| 3. Carte | **Déplacez le point** et **ajustez le cercle** : toutes les stations dans ce rayon sont comparées. Choisissez les **carburants**, l'**âge maximum d'un prix** (défaut 7 jours) et la **fréquence d'actualisation** (10 min à 24 h, défaut 30 min). |
-| 4. Favorites | Cochez vos stations habituelles dans la liste (nom, ville, distance et prix actuels affichés). |
+| 3. Carte | **Déplacez le point** et **ajustez le cercle** : toutes les stations dans ce rayon sont comparées (zone mobile : seulement le rayon). Choisissez les **carburants**, l'**âge maximum d'un prix** (défaut 7 jours) et la **fréquence d'actualisation** (10 min à 24 h, défaut 30 min). |
+| 4. Favorites | Cochez vos stations habituelles dans la liste (nom, ville, distance et prix actuels affichés). **Station hors zone** : tapez une commune ou un code postal dans la recherche et validez, ses stations s'ajoutent à la liste (« hors zone »). |
+
+### Zone mobile
+
+Choisissez une **personne** (`person.*`) ou un **appareil** (`device_tracker.*`, par exemple le téléphone avec l'application compagnon) : la zone est centrée sur sa position et les stations sont rechargées dès qu'il s'est déplacé d'environ un tiers du rayon (au moins 1 km, au plus une fois toutes les 2 minutes). À la maison sans GPS, c'est la position du domicile qui est utilisée. L'historique et la courbe de tendance n'ont pas de sens pour une zone qui bouge : ils ne sont pas calculés.
 
 Vous pouvez créer **autant de zones que vous voulez** : chaque zone est une entrée indépendante avec ses capteurs.
 
@@ -175,13 +183,15 @@ Ajoutez une carte → cherchez **« HOLM Carburant »**. Tout se règle dans l'�
 
 ### Vue compacte
 
-Tableau façon « liste de stations » : logo · nom (ville, distance) · prix · **MàJ en J+n**, pastille ● verte sur la moins chère et ● rouge sur la plus chère, boutons carburants et **↻**. Toucher une ligne ouvre l'itinéraire. Option *uniquement mes favorites*.
+Tableau façon « liste de stations » : logo · nom (ville, distance) · prix · **MàJ en J+n**, pastille ● verte sur la moins chère et ● rouge sur la plus chère, boutons carburants et **↻**. Toucher une ligne ouvre l'itinéraire (ou la fiche, ou rien : option *Clic sur une station*). Les en-têtes *Station* (distance), *Prix* et *MàJ* sont cliquables pour trier. Option *uniquement mes favorites*.
 
 ### Options
 
 | Option | YAML | Défaut | Description |
 |---|---|---|---|
-| Zone | `entry_id` | première zone | Zone à afficher (si vous en avez plusieurs). |
+| Zones | `entry_ids` | première zone | Une ou plusieurs zones ; plusieurs zones sont réunies dans la même carte (classement et meilleur prix sur l'ensemble). L'ancien `entry_id` reste accepté. |
+| Tri des stations | `sort` | `default` | `default` (classement puis favorites), `price` (prix le plus bas d'abord, favorites et hors zone compris), `distance`, `updated` (mise à jour la plus récente) ou `name`. En vue compacte, un clic sur les en-têtes *Station* / *Prix* / *MàJ* trie aussi à la volée. |
+| Clic sur une station | `station_click` | `details` (complète) / `maps` (compacte) | `details` (fiche détaillée), `maps` (itinéraire Google Maps) ou `none` (lecture seule, aucun lien). |
 | Présentation | `layout` | `full` | `full` (complète) ou `compact`. |
 | Apparence | `theme` | `auto` | `auto` (suit le mode clair / sombre de Home Assistant), `dark`, `light` ou `theme` (reprend les couleurs de votre thème). |
 | Titre | `title` | « Carburant *zone* » / « Stations *zone* » | Titre personnalisé. |
@@ -204,6 +214,11 @@ layout: compact
 favorites_only: true
 fuels: [e10, sp98]
 title: Mes stations
+
+# Deux zones réunies, en lecture seule
+type: custom:holm-fuel-card
+entry_ids: [abc123, def456]
+station_click: none
 ```
 
 ---
@@ -354,4 +369,4 @@ Carburant HOLM vous fait économiser quelques centimes à la pompe ? Vous pouvez
 
 Voir le [CHANGELOG](CHANGELOG.md).
 
-Fait partie de la collection **HOLM** : [HOLM Navbar Card](https://github.com/kaaribou/holm-navbar-card) · [HOLM Music Card](https://github.com/kaaribou/holm-music-card) · [HOLM Sentinel Card](https://github.com/kaaribou/holm-sentinel-card).
+Fait partie de la collection **HOLM** : [Volets HOLM](https://github.com/kaaribou/volets-holm) · [Climat HOLM](https://github.com/kaaribou/climat-holm) · [HOLM Climate Card](https://github.com/kaaribou/climate-card-holm) · [HOLM Security Card](https://github.com/kaaribou/holm-security-card) · [HOLM Recordings Card](https://github.com/kaaribou/holm-recordings-card) · [HOLM Covers Card](https://github.com/kaaribou/holm-covers-card) · [HOLM Navbar Card](https://github.com/kaaribou/holm-navbar-card) · [HOLM Music Card](https://github.com/kaaribou/holm-music-card) · [HOLM Sentinel Card](https://github.com/kaaribou/holm-sentinel-card) · [HOLM Power Flow Card](https://github.com/kaaribou/holm-power-flow-card) · [HOLM Energy Cards](https://github.com/kaaribou/holm-energy-cards) · [HOLM Radiator Card](https://github.com/kaaribou/holm-radiator-card) · [HOLM Floor Card](https://github.com/kaaribou/holm-floor-card) · [HOLM Smoke Card](https://github.com/kaaribou/holm-smoke-card) · [HOLM BG Card](https://github.com/kaaribou/holm-bg-card).

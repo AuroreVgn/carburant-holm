@@ -10,6 +10,8 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
     LocationSelector,
     LocationSelectorConfig,
     NumberSelector,
@@ -23,6 +25,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import FuelApi, FuelApiError, parse_station
+from .coordinator import tracker_position
 from .osm import async_get_osm
 from .const import (
     CONF_CITY,
@@ -34,6 +37,8 @@ from .const import (
     CONF_MAX_AGE,
     CONF_RADIUS,
     CONF_SCAN_INTERVAL,
+    CONF_SEARCH,
+    CONF_TRACKER,
     CONF_ZONE_NAME,
     DEFAULT_FUELS,
     DEFAULT_MAX_AGE,
@@ -88,6 +93,10 @@ class _Common:
 
     async def async_step_zone(self, user_input: dict | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
+        mobile = bool(self._data.get(CONF_TRACKER))
+        if user_input is not None and mobile:
+            pos = tracker_position(self.hass, self._data[CONF_TRACKER]) or (self.hass.config.latitude, self.hass.config.longitude)
+            user_input = {**user_input, CONF_LOCATION: {"latitude": pos[0], "longitude": pos[1], "radius": float(user_input.get(CONF_RADIUS, DEFAULT_RADIUS)) * 1000}}
         if user_input is not None:
             loc = user_input.get(CONF_LOCATION) or {}
             radius_km = round(float(loc.get("radius") or DEFAULT_RADIUS * 1000) / 1000, 1)
@@ -107,31 +116,63 @@ class _Common:
                 return await self.async_step_favorites()
         d = self._data
         fuel_opts = [SelectOptionDict(value=k, label=v) for k, v in FUELS.items()]
-        schema = vol.Schema({
-            vol.Required(CONF_LOCATION, default={
+        where = vol.Required(CONF_RADIUS, default=float(d.get(CONF_RADIUS, DEFAULT_RADIUS))) if mobile else vol.Required(CONF_LOCATION, default={
                 "latitude": d.get(CONF_LATITUDE, self.hass.config.latitude),
                 "longitude": d.get(CONF_LONGITUDE, self.hass.config.longitude),
                 "radius": float(d.get(CONF_RADIUS, DEFAULT_RADIUS)) * 1000,
-            }): LocationSelector(LocationSelectorConfig(radius=True, icon="mdi:gas-station")),
+            })
+        where_sel = NumberSelector(NumberSelectorConfig(min=1, max=50, step=1, unit_of_measurement="km", mode=NumberSelectorMode.SLIDER)) if mobile else LocationSelector(LocationSelectorConfig(radius=True, icon="mdi:gas-station"))
+        schema = vol.Schema({
+            where: where_sel,
             vol.Required(CONF_FUELS, default=d.get(CONF_FUELS, DEFAULT_FUELS)): SelectSelector(SelectSelectorConfig(options=fuel_opts, multiple=True, mode=SelectSelectorMode.LIST)),
             vol.Required(CONF_MAX_AGE, default=d.get(CONF_MAX_AGE, DEFAULT_MAX_AGE)): NumberSelector(NumberSelectorConfig(min=1, max=30, step=1, unit_of_measurement="jours", mode=NumberSelectorMode.BOX)),
             vol.Required(CONF_SCAN_INTERVAL, default=d.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): NumberSelector(NumberSelectorConfig(min=10, max=1440, step=5, unit_of_measurement="min", mode=NumberSelectorMode.BOX)),
         })
-        return self.async_show_form(step_id="zone", data_schema=schema, errors=errors, description_placeholders={"zone": d.get(CONF_ZONE_NAME, "")})
+        tname = ""
+        if mobile:
+            st = self.hass.states.get(self._data[CONF_TRACKER])
+            tname = st.name if st else self._data[CONF_TRACKER]
+        return self.async_show_form(step_id="zone_mobile" if mobile else "zone", data_schema=schema, errors=errors,
+                                    description_placeholders={"zone": d.get(CONF_ZONE_NAME, ""), "tracker": tname})
+
+    async def async_step_zone_mobile(self, user_input: dict | None = None) -> ConfigFlowResult:
+        return await self.async_step_zone(user_input)
 
     async def async_step_favorites(self, user_input: dict | None = None) -> ConfigFlowResult:
-        if user_input is not None:
-            self._data[CONF_FAVORITES] = user_input.get(CONF_FAVORITES, [])
-            return self._finish()
+        errors: dict[str, str] = {}
         d = self._data
+        if user_input is not None:
+            favs = [str(x) for x in user_input.get(CONF_FAVORITES, [])]
+            favs += [str(x) for x in user_input.get("add", []) if str(x) not in favs]  # résultats de recherche cochés
+            d[CONF_FAVORITES] = favs
+            self._results = []
+            query = (user_input.get(CONF_SEARCH) or "").strip()
+            if not query:
+                return self._finish()
+            try:
+                found = await self._api().stations_search(query)
+            except FuelApiError:
+                found, errors["base"] = [], "cannot_connect"
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("Erreur inattendue en cherchant des stations")
+                found, errors["base"] = [], "cannot_connect"
+            if not found and not errors:
+                errors[CONF_SEARCH] = "no_station"
+            known = {str(r.get("id")) for r in getattr(self, "_found", [])}
+            self._found = getattr(self, "_found", []) + [r for r in found if str(r.get("id")) not in known]
+            self._results = [str(r.get("id")) for r in found if str(r.get("id")) not in favs]
+            self._last_search = query
         center = (float(d[CONF_LATITUDE]), float(d[CONF_LONGITUDE]))
         current = [str(s) for s in d.get(CONF_FAVORITES, [])]
-        errors: dict[str, str] = {}
         stations: list[dict] = []
         try:
             api = self._api()
             raw = await api.stations_in_zone(center[0], center[1], d[CONF_RADIUS])
             ids = {str(r.get("id")) for r in raw}
+            in_zone = set(ids)
+            extra = [r for r in getattr(self, "_found", []) if str(r.get("id")) not in ids]
+            raw += extra
+            ids |= {str(r.get("id")) for r in extra}
             missing = [s for s in current if s not in ids]
             if missing:
                 raw += await api.stations_by_ids(missing)
@@ -142,28 +183,47 @@ class _Common:
                 _LOGGER.warning("Noms des stations indisponibles : %s", err)
                 infos = {}
             stations = [s for s in (parse_station(r, infos, center) for r in raw) if s]
+            for st in stations:
+                st["in_zone"] = st["id"] in in_zone
         except FuelApiError as err:
             _LOGGER.warning("Stations de la zone indisponibles : %s", err)
             errors["base"] = "cannot_connect"
         except Exception:  # noqa: BLE001
             _LOGGER.exception("Erreur inattendue en listant les stations")
             errors["base"] = "cannot_connect"
-        stations.sort(key=lambda s: (s["distance"] if s["distance"] is not None else 999))
+        # stations de la zone d'abord (par distance), puis celles trouvées ailleurs
+        stations.sort(key=lambda s: (not s.get("in_zone", True), s["distance"] if s["distance"] is not None else 999))
         fuels = d.get(CONF_FUELS, DEFAULT_FUELS)
+        names: dict[str, int] = {}
+        for st in stations:
+            names[f"{st['name']}|{st['city']}"] = names.get(f"{st['name']}|{st['city']}", 0) + 1
 
         def label(s: dict) -> str:
             nm = s["name"] if (not s["brand"] or s["brand"].lower() in s["name"].lower()) else f"{s['brand']} · {s['name']}"
+            if names.get(f"{s['name']}|{s['city']}", 0) > 1 and s.get("address"):
+                nm = f"{nm} ({s['address']})"
             prices = " · ".join(f"{FUELS[f]} {s['fuels'][f]['price']:.3f}".replace(".", ",") for f in fuels if s["fuels"].get(f, {}).get("price") is not None)
             dist = f"{s['distance']:.1f} km".replace(".", ",") if s["distance"] is not None else ""
-            return f"{nm} — {s['city']} {dist}" + (f"  ({prices})" if prices else "")
+            where = f"{s['city']} {dist}" + ("" if s.get("in_zone", True) else " · hors zone")
+            return f"{nm} — {where}" + (f"  ({prices})" if prices else "")
 
         options = [SelectOptionDict(value=s["id"], label=label(s)) for s in stations]
         known = {o["value"] for o in options}
         options += [SelectOptionDict(value=sid, label=f"Station {sid}") for sid in current if sid not in known]
-        schema = vol.Schema({
-            vol.Optional(CONF_FAVORITES, default=current): SelectSelector(SelectSelectorConfig(options=options, multiple=True, mode=SelectSelectorMode.DROPDOWN)),
-        })
-        return self.async_show_form(step_id="favorites", data_schema=schema, errors=errors, description_placeholders={"count": str(len(stations)), "radius": f"{d[CONF_RADIUS]:g}"})
+        fields: dict = {vol.Optional(CONF_FAVORITES, default=current): SelectSelector(SelectSelectorConfig(options=options, multiple=True, mode=SelectSelectorMode.DROPDOWN))}
+        # résultats de la dernière recherche : cases à cocher bien visibles
+        results = [s for s in stations if s["id"] in getattr(self, "_results", [])]
+        if results:
+            fields[vol.Optional("add", default=[s["id"] for s in results] if len(results) == 1 else [])] = SelectSelector(
+                SelectSelectorConfig(options=[SelectOptionDict(value=s["id"], label=label(s)) for s in results], multiple=True, mode=SelectSelectorMode.LIST))
+        fields[vol.Optional(CONF_SEARCH)] = TextSelector()
+        n_zone = sum(1 for s in stations if s.get("in_zone", True))
+        last = getattr(self, "_last_search", "")
+        info = (f"{len(results)} station(s) trouvée(s) pour « {last} » : coche celles à ajouter puis valide." if results
+                else f"Aucune nouvelle station pour « {last} »." if last and not errors else "")
+        return self.async_show_form(step_id="favorites", data_schema=vol.Schema(fields), errors=errors,
+                                    description_placeholders={"count": str(n_zone), "radius": f"{d[CONF_RADIUS]:g}",
+                                                              "found": str(len(stations) - n_zone), "info": info})
 
     def _finish(self) -> ConfigFlowResult:  # pragma: no cover - surchargé
         raise NotImplementedError
@@ -181,9 +241,21 @@ class CarburantHolmConfigFlow(_Common, ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             name = (user_input.get(CONF_ZONE_NAME) or "").strip()
             city = (user_input.get(CONF_CITY) or "").strip()
+            tracker = user_input.get(CONF_TRACKER)
             self._data[CONF_ZONE_NAME] = name or "Maison"
             self._data["_auto_name"] = not name
-            if city:
+            if tracker:
+                st = self.hass.states.get(tracker)
+                pos = tracker_position(self.hass, tracker)
+                if st is None:
+                    errors[CONF_TRACKER] = "tracker_unknown"
+                else:
+                    self._data[CONF_TRACKER] = tracker
+                    if not name:
+                        self._data[CONF_ZONE_NAME] = f"autour de {st.name}"
+                    self._data[CONF_LATITUDE], self._data[CONF_LONGITUDE] = pos or (self.hass.config.latitude, self.hass.config.longitude)
+                    return await self.async_step_zone()
+            elif city:
                 err = await self._search_city(city)
                 if err:
                     errors[CONF_CITY] = err
@@ -196,6 +268,7 @@ class CarburantHolmConfigFlow(_Common, ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Optional(CONF_ZONE_NAME): TextSelector(),
             vol.Optional(CONF_CITY): TextSelector(),
+            vol.Optional(CONF_TRACKER): EntitySelector(EntitySelectorConfig(domain=["person", "device_tracker"])),
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
@@ -222,6 +295,14 @@ class CarburantHolmOptionsFlow(_Common, OptionsFlow):
             if user_input.get(CONF_ZONE_NAME):
                 self._data[CONF_ZONE_NAME] = user_input[CONF_ZONE_NAME].strip()
             city = (user_input.get(CONF_CITY) or "").strip()
+            tracker = user_input.get(CONF_TRACKER)
+            if tracker:
+                self._data[CONF_TRACKER] = tracker
+                pos = tracker_position(self.hass, tracker)
+                if pos:
+                    self._data[CONF_LATITUDE], self._data[CONF_LONGITUDE] = pos
+                return await self.async_step_zone()
+            self._data.pop(CONF_TRACKER, None)
             if city:
                 err = await self._search_city(city)
                 if err:
@@ -230,9 +311,11 @@ class CarburantHolmOptionsFlow(_Common, OptionsFlow):
                     return await self.async_step_commune()
             else:
                 return await self.async_step_zone()
+        tr = self._data.get(CONF_TRACKER)
         schema = vol.Schema({
             vol.Optional(CONF_ZONE_NAME, default=self._data.get(CONF_ZONE_NAME, "")): TextSelector(),
             vol.Optional(CONF_CITY): TextSelector(),
+            (vol.Optional(CONF_TRACKER, description={"suggested_value": tr}) if tr else vol.Optional(CONF_TRACKER)): EntitySelector(EntitySelectorConfig(domain=["person", "device_tracker"])),
         })
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
 

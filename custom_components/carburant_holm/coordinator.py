@@ -7,13 +7,14 @@ from statistics import mean
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import FuelApi, FuelApiError, parse_station
+from .api import FuelApi, FuelApiError, haversine, parse_station
 from .osm import async_get_osm
 from .const import (
     CONF_FAVORITES,
@@ -23,6 +24,7 @@ from .const import (
     CONF_MAX_AGE,
     CONF_RADIUS,
     CONF_SCAN_INTERVAL,
+    CONF_TRACKER,
     CONF_ZONE_NAME,
     DEFAULT_FUELS,
     DEFAULT_MAX_AGE,
@@ -31,10 +33,28 @@ from .const import (
     DOMAIN,
     FUELS,
     HISTORY_DAYS,
+    MOBILE_MIN_INTERVAL,
+    MOBILE_MIN_MOVE_KM,
     TOP_COUNT,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def tracker_position(hass: HomeAssistant, entity_id: str | None) -> tuple[float, float] | None:
+    """Position GPS d'une personne / d'un appareil (ou de la maison s'il y est)."""
+    st = hass.states.get(entity_id) if entity_id else None
+    if st is None:
+        return None
+    lat, lon = st.attributes.get("latitude"), st.attributes.get("longitude")
+    if lat is not None and lon is not None:
+        try:
+            return float(lat), float(lon)
+        except (TypeError, ValueError):
+            pass
+    if st.state == "home":
+        return float(hass.config.latitude), float(hass.config.longitude)
+    return None
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -103,6 +123,8 @@ class FuelCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.fuels: list[str] = [f for f in opts.get(CONF_FUELS, DEFAULT_FUELS) if f in FUELS]
         self.favorites: list[str] = [str(s) for s in opts.get(CONF_FAVORITES, [])]
         self.max_age = int(opts.get(CONF_MAX_AGE, DEFAULT_MAX_AGE))
+        self.tracker: str | None = opts.get(CONF_TRACKER) or None
+        self._last_move_refresh = 0.0
         self.history: dict[str, Any] = {"zone": {}, "stations": {}}
         self._store: Store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.history")
 
@@ -112,7 +134,34 @@ class FuelCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if isinstance(stored, dict):
             self.history = {"zone": stored.get("zone", {}), "stations": stored.get("stations", {})}
 
+    @property
+    def mobile(self) -> bool:
+        return bool(self.tracker)
+
+    @callback
+    def async_start_tracking(self) -> CALLBACK_TYPE | None:
+        """Zone mobile : recharge les stations quand la personne s'est déplacée."""
+        if not self.tracker:
+            return None
+
+        @callback
+        def _moved(event: Event[EventStateChangedData]) -> None:
+            pos = tracker_position(self.hass, self.tracker)
+            if pos is None:
+                return
+            moved = haversine(self.lat, self.lon, pos[0], pos[1])
+            now = dt_util.utcnow().timestamp()
+            if moved >= max(MOBILE_MIN_MOVE_KM, self.radius / 3) and now - self._last_move_refresh >= MOBILE_MIN_INTERVAL:
+                self._last_move_refresh = now
+                self.hass.async_create_task(self.async_request_refresh())
+
+        return async_track_state_change_event(self.hass, [self.tracker], _moved)
+
     async def _async_update_data(self) -> dict[str, Any]:
+        if self.tracker:
+            pos = tracker_position(self.hass, self.tracker)
+            if pos is not None:
+                self.lat, self.lon = pos
         center = (self.lat, self.lon)
         try:
             raw = await self.api.stations_in_zone(self.lat, self.lon, self.radius)
@@ -140,14 +189,14 @@ class FuelCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             s["trend_1d"] = self._trend(fuel, 1)
             for rank, sid in enumerate(s["ranking"], start=1):
                 stations[sid]["fuels"][fuel]["rank"] = rank
-        return {"stations": stations, "stats": stats, "updated": now.isoformat()}
+        return {"stations": stations, "stats": stats, "updated": now.isoformat(), "center": [self.lat, self.lon]}
 
     # ---------- historique ----------
     def _record_history(self, stations: dict, stats: dict, now: datetime) -> None:
         day = now.date().isoformat()
         zone = self.history.setdefault("zone", {})
         for fuel, s in stats.items():
-            if not s.get("count"):
+            if not s.get("count") or self.mobile:
                 continue
             zone.setdefault(fuel, {})[day] = {"min": s["best_price"], "avg": s["average"]}
         st_hist = self.history.setdefault("stations", {})

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0
+- **Favorites hors zone** : dans l'étape des favorites, une recherche par commune ou code postal ajoute n'importe quelle station de France à la liste (marquée « hors zone ») ([#1](https://github.com/kaaribou/carburant-holm/issues/1)).
+- **Plusieurs zones dans une même carte** (`entry_ids`) : stations réunies, classement, meilleur prix et tendance calculés sur l'ensemble ; le bouton ↻ actualise toutes les zones ([#1](https://github.com/kaaribou/carburant-holm/issues/1)).
+- **Clic sur une station** (`station_click`) : itinéraire, fiche détaillée ou lecture seule (aucun lien), en vue compacte comme en vue complète ([#2](https://github.com/kaaribou/carburant-holm/issues/2)).
+- **Zone mobile** : une zone peut suivre une personne ou un téléphone ; les stations proches sont rechargées quand elle se déplace. Pas d'historique ni de courbe pour une zone mobile ([#3](https://github.com/kaaribou/carburant-holm/issues/3)).
+- **Stations homonymes** : deux stations au même nom dans la même ville (ex. deux « Super U Poitiers ») affichent leur adresse, dans la carte comme dans l'assistant. C'était l'origine de l'apparente incohérence entre classement et favorites : il s'agissait de deux stations différentes ([#4](https://github.com/kaaribou/carburant-holm/issues/4)).
+- Les stations hors zone sont signalées « hors zone » dans la carte.
+- **Tri des stations** (`sort`) : classement puis favorites (par défaut), prix le plus bas d'abord (tout mélangé : favorites et hors zone compris), distance, mise à jour la plus récente ou nom. En vue compacte, les en-têtes *Station* / *Prix* / *MàJ* trient aussi d'un clic.
+- Assistant : les stations trouvées par la recherche hors zone s'affichent en cases à cocher (une seule station trouvée = déjà cochée).
+
 ## 1.3.5
 - **Mise à jour de la carte toujours prise en compte** : l'adresse de la ressource Lovelace dépendait d'un numéro de version qui pouvait rester en retard (1.3.3 alors que la 1.3.4 était installée), et un navigateur pouvait continuer d'afficher l'ancienne carte depuis son cache. Elle contient maintenant la version de l'intégration et une empreinte du fichier de la carte : toute nouvelle carte change l'adresse et force le rechargement.
 
