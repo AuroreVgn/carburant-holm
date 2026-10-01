@@ -37,6 +37,17 @@ Données officielles : flux instantané v2 du Ministère de l'Économie ([data.e
 |---|---|---|
 | ![Carte complète](docs/images/carte-complete.png) | ![Carte compacte](docs/images/carte-compacte.png) | ![Favorites](docs/images/carte-compacte-favorites.png) |
 
+### 🆕 Nouveautés de la 1.4.0
+
+| | |
+|---|---|
+| ⭐ **Favorites hors zone** | Ajoutez **n'importe quelle station de France** à vos favorites : dans l'étape des favorites, tapez une commune ou un code postal, cochez les stations trouvées. Elles s'affichent avec la mention « hors zone ». |
+| 🧩 **Plusieurs zones dans une carte** | Réunissez *Maison* et *Travail* (ou plus) dans la même carte : un seul classement, un seul meilleur prix. |
+| 📍 **Zone mobile** | La zone suit une personne ou un téléphone : les stations proches se rechargent au fil de vos déplacements. |
+| ↕️ **Tri au choix** | Prix le plus bas d'abord (favorites et hors zone mélangés), distance, mise à jour, nom… et tri d'un clic sur les en-têtes de la vue compacte. |
+| 👆 **Clic sur une station** | Itinéraire, fiche détaillée, ou **lecture seule** sans aucun lien. |
+| 🔤 **Stations homonymes** | Deux « Super U » dans la même ville ? Leur adresse est affichée pour les distinguer. |
+
 ---
 
 ## Sommaire
@@ -130,9 +141,9 @@ Vous pouvez créer **autant de zones que vous voulez** : chaque zone est une ent
 
 **Paramètres → Appareils et services → Carburant HOLM → Configurer** :
 
-1. Renommer la zone et/ou taper une **nouvelle ville** pour la recentrer (laisser vide = garder le centre actuel) ;
-2. Ajuster le **point / rayon**, les **carburants**, l'âge max et l'actualisation ;
-3. Mettre à jour les **favorites**.
+1. Renommer la zone et/ou taper une **nouvelle ville** pour la recentrer (laisser vide = garder le centre actuel), ou choisir une **personne / un téléphone** pour en faire une **zone mobile** (vider le champ pour revenir à une zone fixe) ;
+2. Ajuster le **point / rayon** (zone mobile : le rayon), les **carburants**, l'âge max et l'actualisation ;
+3. Mettre à jour les **favorites** ; pour une **station hors zone**, tapez une commune ou un code postal dans la recherche, validez, cochez les stations trouvées et validez à nouveau.
 
 L'intégration se recharge automatiquement.
 
@@ -177,8 +188,10 @@ Ajoutez une carte → cherchez **« HOLM Carburant »**. Tout se règle dans l'�
 - **Station la moins chère** : logo, nom, ville, distance, prix, ancienneté du prix, **tendance sur 7 jours**, **écart à la moyenne**, bouton **Itinéraire** ;
 - **Courbe** meilleur prix / moyenne de la zone (jusqu'à 45 jours) ;
 - **Classement** avec barre relative, écart au premier, fraîcheur du prix (● vert < 48 h, ● orange ≤ 3 j, ● gris au-delà), ruptures ;
-- **Vos favorites** épinglées (★) même hors du top ;
-- **Toucher une station** : adresse, **tous ses carburants**, services (lavage, boutique, gonflage, DAB…), automate 24/24, liens **Google Maps** et **Waze** ;
+- **Vos favorites** épinglées (★) même hors du top, y compris les stations **hors zone** ;
+- **Tri au choix** (option *Tri des stations*) : classement puis favorites, ou une seule liste triée par prix, distance, mise à jour ou nom ;
+- **Plusieurs zones** réunies si vous en choisissez plusieurs (classement et meilleur prix sur l'ensemble) ; une **zone mobile** affiche « autour de … » et masque la courbe ;
+- **Toucher une station** : adresse, **tous ses carburants**, services (lavage, boutique, gonflage, DAB…), automate 24/24, liens **Google Maps** et **Waze** (ou itinéraire direct, ou rien : option *Clic sur une station*) ;
 - Bouton **↻** d'actualisation.
 
 ### Vue compacte
@@ -340,6 +353,10 @@ Réponse : `version` et `zones[]` avec pour chaque zone `entry_id`, `title`, `zo
 | Texte illisible (noir sur fond sombre) avec un thème clair | Corrigé en 1.3.4 : la carte s'adapte au mode clair / sombre. Vous pouvez aussi forcer l'option **Apparence** (`theme`) sur Clair, Sombre ou « Couleurs de mon thème ». |
 | La carte ne se met pas à jour après une mise à jour | Rechargez la page sans cache (Ctrl + F5) ou videz le cache du frontend dans l'application mobile. |
 | Trop / pas assez de stations | Ajustez le rayon (options). Au-delà de 400 stations, seules les 400 premières sont chargées. |
+| Ajouter une station située hors de la zone | Options → favorites → tapez sa commune ou son code postal dans la recherche, validez, cochez-la (1.4.0). |
+| Deux stations portent le même nom | Leur adresse est affichée depuis la 1.4.0 ; avant, l'une pouvait sembler « en rupture » alors qu'il s'agissait d'une autre station. |
+| La zone mobile ne bouge pas | Vérifiez que la personne / l'appareil a bien une position GPS (attributs `latitude` / `longitude`) : l'application compagnon doit avoir la localisation activée. À la maison sans GPS, c'est le domicile qui sert de centre. |
+| Afficher Maison et Travail dans la même carte | Éditeur de la carte → *Zones* : cochez les deux (1.4.0). |
 
 Journal détaillé :
 
