@@ -258,8 +258,7 @@
         const mode = this._click();
         if (mode === "none") return;
         if (mode === "maps") { const s = this._byId[r.dataset.id]; if (s) window.open(this._maps(s), "_blank", "noopener"); return; }
-        this._open = this._open === r.dataset.id ? null : r.dataset.id;
-        this._render();
+        this._toggleDetails(r);
       }));
       root.querySelectorAll("img[data-fb]").forEach((img) => img.addEventListener("error", () => { img.replaceWith(Object.assign(document.createElement("span"), { className: "ini", textContent: img.dataset.fb })); }));
     }
@@ -305,8 +304,32 @@
       root.querySelectorAll(".cp").forEach((b) => b.addEventListener("click", () => { this._fuel = b.dataset.f; this._render(); }));
       root.querySelector(".cref").addEventListener("click", () => this._refresh());
       root.querySelectorAll(".cs").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.s; this._sort = this._sortMode() === k ? "default" : k; this._render(); }));
-      root.querySelectorAll(".cr.clk").forEach((r) => r.addEventListener("click", () => { this._open = this._open === r.dataset.id ? null : r.dataset.id; this._render(); }));
+      root.querySelectorAll(".cr.clk").forEach((r) => r.addEventListener("click", () => this._toggleDetails(r)));
       root.querySelectorAll("img[data-fb]").forEach((img) => img.addEventListener("error", () => { img.replaceWith(Object.assign(document.createElement("span"), { className: "ini", textContent: img.dataset.fb })); }));
+    }
+    _toggleDetails(row) {
+      const id = row.dataset.id;
+      const station = this._byId[id];
+      if (!station) return;
+      this._open = this._open === id ? null : id;
+
+      // Keep the card and station rows mounted: replacing the entire shadow DOM
+      // on a detail click can reset the Home Assistant scroll container on iOS.
+      this.shadowRoot.querySelectorAll(".row, .cr.clk").forEach((r) => {
+        const compact = r.classList.contains("cr");
+        const detail = compact ? r.nextElementSibling : r.querySelector(".det");
+        const detailClass = compact ? "cdet" : "det";
+        const open = this._open !== null && r.dataset.id === this._open;
+        r.classList.toggle("open", open);
+        if (detail?.classList.contains(detailClass)) detail.remove();
+        if (open) {
+          const panel = document.createElement("div");
+          panel.className = detailClass;
+          panel.innerHTML = this._detail(station);
+          if (compact) r.after(panel);
+          else r.append(panel);
+        }
+      });
     }
     _logo(s) {
       const ini = esc(initials(s.brand || s.name));
